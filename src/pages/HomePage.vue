@@ -929,14 +929,9 @@ function openBookmark(bookmark: Bookmark) {
               </header>
               <p v-if="bookmark.description" class="card__description">{{ bookmark.description }}</p>
               <p class="card__url">{{ bookmark.url }}</p>
-              <footer class="card__footer">
-                <span class="card__time">权重：{{ bookmark.weight ?? 0 }}</span>
-                <div v-if="isAuthenticated" class="card__buttons">
-                  <button class="button button--ghost" @click.stop="startEdit(bookmark)">编辑</button>
-                  <button class="button button--ghost-alt" @click.stop="toggleVisibility(bookmark)">
-                    {{ bookmark.visible === false ? '设为可见' : '隐藏' }}
-                  </button>
-                  <button class="button button--danger" @click.stop="removeBookmark(bookmark.id)">
+              <footer class="card__footer" v-if="isAuthenticated">
+                <div class="card__buttons">
+                  <button class="button button--danger button--small" @click.stop="removeBookmark(bookmark.id)">
                     删除
                   </button>
                 </div>
@@ -982,14 +977,9 @@ function openBookmark(bookmark: Bookmark) {
             </header>
             <p v-if="bookmark.description" class="card__description">{{ bookmark.description }}</p>
             <p class="card__url">{{ bookmark.url }}</p>
-            <footer class="card__footer">
-              <span class="card__time">权重：{{ bookmark.weight ?? 0 }}</span>
-              <div v-if="isAuthenticated" class="card__buttons">
-                <button class="button button--ghost" @click.stop="startEdit(bookmark)">编辑</button>
-                <button class="button button--ghost-alt" @click.stop="toggleVisibility(bookmark)">
-                  {{ bookmark.visible === false ? '设为可见' : '隐藏' }}
-                </button>
-                <button class="button button--danger" @click.stop="removeBookmark(bookmark.id)">
+            <footer class="card__footer" v-if="isAuthenticated">
+              <div class="card__buttons">
+                <button class="button button--danger button--small" @click.stop="removeBookmark(bookmark.id)">
                   删除
                 </button>
               </div>
@@ -1769,11 +1759,17 @@ function openBookmark(bookmark: Bookmark) {
 .card__buttons {
   display: flex;
   gap: 8px;
+  justify-content: flex-end;
 }
 
 .card__buttons .button {
   padding: 6px 12px;
   font-size: 13px;
+}
+
+.button--small {
+  padding: 4px 10px;
+  font-size: 12px;
 }
 
 .card--hidden {

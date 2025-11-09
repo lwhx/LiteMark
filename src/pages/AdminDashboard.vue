@@ -9,8 +9,6 @@ type Bookmark = {
   category?: string;
   description?: string;
   visible?: boolean;
-  createdAt: string;
-  updatedAt?: string;
   weight?: number;
 };
 
@@ -115,11 +113,7 @@ const categoryCount = computed(() => {
 
 const recentBookmarks = computed(() => {
   return [...bookmarks.value]
-    .sort(
-      (a, b) =>
-        new Date(b.updatedAt ?? b.createdAt).getTime() -
-        new Date(a.updatedAt ?? a.createdAt).getTime()
-    )
+    .sort((a, b) => (b.weight ?? 0) - (a.weight ?? 0))
     .slice(0, 5);
 });
 
@@ -675,13 +669,11 @@ onMounted(() => {
             </div>
           </div>
           <div class="recent-list" v-if="recentBookmarks.length">
-            <h3>最近更新</h3>
+            <h3>当前排序靠前的书签</h3>
             <ul>
               <li v-for="bookmark in recentBookmarks" :key="bookmark.id">
                 <span class="recent__title">{{ bookmark.title }}</span>
-                <span class="recent__time">
-                  {{ new Date(bookmark.updatedAt ?? bookmark.createdAt).toLocaleString() }}
-                </span>
+                <span class="recent__time">权重：{{ bookmark.weight ?? 0 }}</span>
               </li>
             </ul>
           </div>

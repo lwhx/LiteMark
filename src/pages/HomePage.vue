@@ -268,9 +268,6 @@ const groupedBookmarks = computed(() => {
 const categorySuggestions = computed(() => {
   const set = new Set<string>();
   bookmarks.value.forEach((bookmark) => {
-    if (bookmark.visible === false && !isAuthenticated.value) {
-      return;
-    }
     const normalized = normalizeCategory(bookmark);
     if (normalized) {
       set.add(normalized);

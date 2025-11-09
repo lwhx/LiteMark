@@ -32,6 +32,59 @@ const DEFAULT_SETTINGS: SettingsData = {
   siteIcon: '🔖'
 };
 
+const SETTINGS_CACHE_TTL = Number(process.env.SETTINGS_CACHE_TTL_MS ?? '60000');
+
+type SettingsCache = {
+  value: SettingsData;
+  expiresAt: number;
+};
+
+let settingsCache: SettingsCache | null = null;
+let settingsRefreshTimer: NodeJS.Timeout | null = null;
+
+function refreshSettingsCache() {
+  readJson('settings', DEFAULT_SETTINGS)
+    .then((settings) => {
+      const now = Date.now();
+      settingsCache = {
+        value: settings,
+        expiresAt: SETTINGS_CACHE_TTL > 0 ? now + SETTINGS_CACHE_TTL : now
+      };
+    })
+    .catch((error) => {
+      console.error('刷新站点设置缓存失败：', error);
+    })
+    .finally(() => {
+      if (SETTINGS_CACHE_TTL > 0) {
+        settingsRefreshTimer = setTimeout(refreshSettingsCache, SETTINGS_CACHE_TTL);
+      }
+    });
+}
+
+export async function forceRefreshSettingsCache(): Promise<SettingsData> {
+  if (settingsRefreshTimer) {
+    clearTimeout(settingsRefreshTimer);
+    settingsRefreshTimer = null;
+  }
+  const settings = await readJson('settings', DEFAULT_SETTINGS);
+  const now = Date.now();
+  settingsCache = {
+    value: settings,
+    expiresAt: SETTINGS_CACHE_TTL > 0 ? now + SETTINGS_CACHE_TTL : now
+  };
+  ensureSettingsRefreshTimer();
+  return settings;
+}
+
+function ensureSettingsRefreshTimer() {
+  if (SETTINGS_CACHE_TTL <= 0) {
+    return;
+  }
+  if (!settingsRefreshTimer) {
+    settingsRefreshTimer = setTimeout(refreshSettingsCache, SETTINGS_CACHE_TTL);
+  }
+}
+
 async function loadBookmarks(): Promise<BookmarkRecord[]> {
   return readJson('bookmarks', [] as BookmarkRecord[]);
 }
@@ -41,11 +94,31 @@ async function saveBookmarks(bookmarks: BookmarkRecord[]) {
 }
 
 async function loadSettings(): Promise<SettingsData> {
-  return readJson('settings', DEFAULT_SETTINGS);
+  const now = Date.now();
+  if (settingsCache && settingsCache.expiresAt > now) {
+    return settingsCache.value;
+  }
+  const settings = await readJson('settings', DEFAULT_SETTINGS);
+  settingsCache = {
+    value: settings,
+    expiresAt: SETTINGS_CACHE_TTL > 0 ? now + SETTINGS_CACHE_TTL : now
+  };
+  ensureSettingsRefreshTimer();
+  return settings;
 }
 
 async function saveSettings(settings: SettingsData) {
   await writeJson('settings', settings);
+  const now = Date.now();
+  settingsCache = {
+    value: settings,
+    expiresAt: SETTINGS_CACHE_TTL > 0 ? now + SETTINGS_CACHE_TTL : now
+  };
+  if (settingsRefreshTimer) {
+    clearTimeout(settingsRefreshTimer);
+    settingsRefreshTimer = null;
+  }
+  ensureSettingsRefreshTimer();
 }
 
 export async function getSettings(): Promise<SettingsData> {
@@ -64,6 +137,8 @@ export async function updateSettings(partial: Partial<SettingsData>): Promise<Se
   await saveSettings(next);
   return next;
 }
+
+ensureSettingsRefreshTimer();
 
 export async function listBookmarks(): Promise<BookmarkRecord[]> {
   return loadBookmarks();

@@ -556,190 +556,199 @@ onMounted(() => {
 
 <template>
   <div class="admin-layout">
-    <header class="admin-header">
-      <div class="admin-header__left">
-        <h1>LiteMark 后台管理</h1>
-        <p>管理站点展示、主题与书签数据</p>
-      </div>
-      <div class="admin-header__right">
-        <button class="button button--ghost" type="button" @click="goHome">回到网站</button>
-        <button
-          v-if="isAuthenticated"
-          class="button button--ghost"
-          type="button"
-          @click="logout"
-        >
-          退出登录
-        </button>
-        <button v-else class="button button--primary" type="button" @click="openLogin">
-          管理员登录
-        </button>
-      </div>
-    </header>
-
-    <main class="admin-main">
-      <section class="card stats-card">
-        <header class="card__header">
-          <h2>站点概况</h2>
-          <span v-if="currentUser" class="chip">当前账号：{{ currentUser }}</span>
-        </header>
-        <div class="stats-grid">
-          <div class="stat">
-            <span class="stat__label">书签总数</span>
-            <strong class="stat__value">{{ totalCount }}</strong>
-          </div>
-          <div class="stat">
-            <span class="stat__label">可见书签</span>
-            <strong class="stat__value">{{ visibleCount }}</strong>
-          </div>
-          <div class="stat">
-            <span class="stat__label">已隐藏</span>
-            <strong class="stat__value">{{ hiddenCount }}</strong>
-          </div>
-          <div class="stat">
-            <span class="stat__label">分类数量</span>
-            <strong class="stat__value">{{ categoryCount }}</strong>
-          </div>
+    <template v-if="isAuthenticated">
+      <header class="admin-header">
+        <div class="admin-header__left">
+          <h1>LiteMark 后台管理</h1>
+          <p>管理站点展示、主题与书签数据</p>
         </div>
-        <div class="recent-list" v-if="recentBookmarks.length">
-          <h3>最近更新</h3>
-          <ul>
-            <li v-for="bookmark in recentBookmarks" :key="bookmark.id">
-              <span class="recent__title">{{ bookmark.title }}</span>
-              <span class="recent__time">
-                {{ new Date(bookmark.updatedAt ?? bookmark.createdAt).toLocaleString() }}
-              </span>
-            </li>
-          </ul>
+        <div class="admin-header__right">
+          <button class="button button--ghost" type="button" @click="goHome">回到网站</button>
+          <button class="button button--ghost" type="button" @click="logout">
+            退出登录
+          </button>
         </div>
-      </section>
+      </header>
 
-      <section class="card settings-card">
-        <header class="card__header">
-          <h2>站点设置</h2>
-          <p>配置网站标题、图标以及主题风格</p>
-        </header>
-        <form class="form-grid" @submit.prevent="saveSiteSettings">
-          <label class="field">
-            <span>网站标题 *</span>
-            <input
-              v-model="siteSettingsForm.title"
-              type="text"
-              maxlength="60"
-              placeholder="例如：我的书签收藏"
-              required
-              :disabled="!isAuthenticated || siteSettingsSaving"
-            />
-          </label>
-          <label class="field">
-            <span>网站图标</span>
-            <input
-              v-model="siteSettingsForm.icon"
-              type="text"
-              maxlength="512"
-              placeholder="Emoji、链接或 data URL"
-              :disabled="!isAuthenticated || siteSettingsSaving"
-            />
-          </label>
-          <label class="field">
-            <span>主题</span>
-            <select
-              v-model="selectedTheme"
-              @change="handleThemeChange"
-              :disabled="themeSaving || !isAuthenticated"
-            >
-              <option v-for="option in themeOptions" :key="option.value" :value="option.value">
-                {{ option.label }}
-              </option>
-            </select>
-          </label>
-          <div class="settings-actions">
-            <button class="button button--primary" type="submit" :disabled="siteSettingsSaving || !isAuthenticated">
-              {{ siteSettingsSaving ? '保存中...' : '保存设置' }}
-            </button>
-          </div>
-        </form>
-        <p v-if="siteSettingsError" class="alert alert--error">{{ siteSettingsError }}</p>
-        <p v-else-if="siteSettingsMessage" class="alert alert--success">{{ siteSettingsMessage }}</p>
-        <p v-if="themeMessage" class="alert alert--error">{{ themeMessage }}</p>
-      </section>
-
-      <section class="card bookmarks-card">
-        <header class="card__header">
-          <div>
-            <h2>书签管理</h2>
-            <p>查看、筛选并维护所有书签条目</p>
-          </div>
-          <div class="bookmarks-actions">
-            <div class="search-box">
-              <input
-                v-model="search"
-                type="search"
-                placeholder="搜索标题、链接或分类..."
-              />
+      <main class="admin-main">
+        <section class="card stats-card">
+          <header class="card__header">
+            <h2>站点概况</h2>
+            <span v-if="currentUser" class="chip">当前账号：{{ currentUser }}</span>
+          </header>
+          <div class="stats-grid">
+            <div class="stat">
+              <span class="stat__label">书签总数</span>
+              <strong class="stat__value">{{ totalCount }}</strong>
             </div>
-            <button
-              class="button button--primary"
-              type="button"
-              :disabled="!isAuthenticated"
-              @click="openCreate"
-            >
-              新建书签
-            </button>
-            <button class="button button--ghost" type="button" @click="loadBookmarks" :disabled="loading">
-              {{ loading ? '加载中...' : '刷新数据' }}
-            </button>
+            <div class="stat">
+              <span class="stat__label">可见书签</span>
+              <strong class="stat__value">{{ visibleCount }}</strong>
+            </div>
+            <div class="stat">
+              <span class="stat__label">已隐藏</span>
+              <strong class="stat__value">{{ hiddenCount }}</strong>
+            </div>
+            <div class="stat">
+              <span class="stat__label">分类数量</span>
+              <strong class="stat__value">{{ categoryCount }}</strong>
+            </div>
           </div>
-        </header>
-        <p v-if="error" class="alert alert--error">{{ error }}</p>
-        <div class="table-wrapper">
-          <table>
-            <thead>
-              <tr>
-                <th>标题</th>
-                <th>分类</th>
-                <th>链接</th>
-                <th>状态</th>
-                <th>更新时间</th>
-                <th class="table-actions">操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="bookmark in filteredBookmarks" :key="bookmark.id">
-                <td>
-                  <div class="table-title">{{ bookmark.title }}</div>
-                  <div v-if="bookmark.description" class="table-desc">{{ bookmark.description }}</div>
-                </td>
-                <td>{{ normalizeCategory(bookmark) }}</td>
-                <td>
-                  <a :href="bookmark.url" target="_blank" rel="noreferrer">{{ bookmark.url }}</a>
-                </td>
-                <td>
-                  <span class="chip" :class="{ 'chip--muted': bookmark.visible === false }">
-                    {{ bookmark.visible === false ? '隐藏' : '可见' }}
-                  </span>
-                </td>
-                <td>{{ new Date(bookmark.updatedAt ?? bookmark.createdAt).toLocaleString() }}</td>
-                <td class="table-actions">
-                  <button class="link-button" type="button" @click="openEdit(bookmark)">编辑</button>
-                  <button class="link-button" type="button" @click="toggleVisibility(bookmark)">
-                    {{ bookmark.visible === false ? '设为可见' : '设为隐藏' }}
-                  </button>
-                  <button class="link-button link-button--danger" type="button" @click="deleteBookmark(bookmark.id)">
-                    删除
-                  </button>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-          <p v-if="!filteredBookmarks.length && !loading" class="empty-placeholder">
-            暂无书签或未匹配到搜索结果
-          </p>
-        </div>
-      </section>
-    </main>
+          <div class="recent-list" v-if="recentBookmarks.length">
+            <h3>最近更新</h3>
+            <ul>
+              <li v-for="bookmark in recentBookmarks" :key="bookmark.id">
+                <span class="recent__title">{{ bookmark.title }}</span>
+                <span class="recent__time">
+                  {{ new Date(bookmark.updatedAt ?? bookmark.createdAt).toLocaleString() }}
+                </span>
+              </li>
+            </ul>
+          </div>
+        </section>
 
-    <div v-if="showEditor" class="overlay" @click.self="closeEditor">
+        <section class="card settings-card">
+          <header class="card__header">
+            <h2>站点设置</h2>
+            <p>配置网站标题、图标以及主题风格</p>
+          </header>
+          <form class="form-grid" @submit.prevent="saveSiteSettings">
+            <label class="field">
+              <span>网站标题 *</span>
+              <input
+                v-model="siteSettingsForm.title"
+                type="text"
+                maxlength="60"
+                placeholder="例如：我的书签收藏"
+                required
+                :disabled="!isAuthenticated || siteSettingsSaving"
+              />
+            </label>
+            <label class="field">
+              <span>网站图标</span>
+              <input
+                v-model="siteSettingsForm.icon"
+                type="text"
+                maxlength="512"
+                placeholder="Emoji、链接或 data URL"
+                :disabled="!isAuthenticated || siteSettingsSaving"
+              />
+            </label>
+            <label class="field">
+              <span>主题</span>
+              <select
+                v-model="selectedTheme"
+                @change="handleThemeChange"
+                :disabled="themeSaving || !isAuthenticated"
+              >
+                <option v-for="option in themeOptions" :key="option.value" :value="option.value">
+                  {{ option.label }}
+                </option>
+              </select>
+            </label>
+            <div class="settings-actions">
+              <button class="button button--primary" type="submit" :disabled="siteSettingsSaving || !isAuthenticated">
+                {{ siteSettingsSaving ? '保存中...' : '保存设置' }}
+              </button>
+              <button
+                class="button button--ghost"
+                type="button"
+                :disabled="cacheRefreshing || !isAuthenticated"
+                @click="refreshSettingsCache"
+              >
+                {{ cacheRefreshing ? '刷新中...' : '刷新缓存' }}
+              </button>
+            </div>
+          </form>
+          <p v-if="siteSettingsError" class="alert alert--error">{{ siteSettingsError }}</p>
+          <p v-else-if="siteSettingsMessage" class="alert alert--success">{{ siteSettingsMessage }}</p>
+          <p
+            v-if="cacheMessage"
+            class="alert"
+            :class="cacheMessage.includes('失败') ? 'alert--error' : 'alert--success'"
+          >
+            {{ cacheMessage }}
+          </p>
+          <p v-if="themeMessage" class="alert alert--error">{{ themeMessage }}</p>
+        </section>
+
+        <section class="card bookmarks-card">
+          <header class="card__header">
+            <div>
+              <h2>书签管理</h2>
+              <p>查看、筛选并维护所有书签条目</p>
+            </div>
+            <div class="bookmarks-actions">
+              <div class="search-box">
+                <input
+                  v-model="search"
+                  type="search"
+                  placeholder="搜索标题、链接或分类..."
+                />
+              </div>
+              <button
+                class="button button--primary"
+                type="button"
+                :disabled="!isAuthenticated"
+                @click="openCreate"
+              >
+                新建书签
+              </button>
+              <button class="button button--ghost" type="button" @click="loadBookmarks" :disabled="loading">
+                {{ loading ? '加载中...' : '刷新数据' }}
+              </button>
+            </div>
+          </header>
+          <p v-if="error" class="alert alert--error">{{ error }}</p>
+          <div class="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>标题</th>
+                  <th>分类</th>
+                  <th>链接</th>
+                  <th>状态</th>
+                  <th>更新时间</th>
+                  <th class="table-actions">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="bookmark in filteredBookmarks" :key="bookmark.id">
+                  <td>
+                    <div class="table-title">{{ bookmark.title }}</div>
+                    <div v-if="bookmark.description" class="table-desc">{{ bookmark.description }}</div>
+                  </td>
+                  <td>{{ normalizeCategory(bookmark) }}</td>
+                  <td>
+                    <a :href="bookmark.url" target="_blank" rel="noreferrer">{{ bookmark.url }}</a>
+                  </td>
+                  <td>
+                    <span class="chip" :class="{ 'chip--muted': bookmark.visible === false }">
+                      {{ bookmark.visible === false ? '隐藏' : '可见' }}
+                    </span>
+                  </td>
+                  <td>{{ new Date(bookmark.updatedAt ?? bookmark.createdAt).toLocaleString() }}</td>
+                  <td class="table-actions">
+                    <button class="link-button" type="button" @click="openEdit(bookmark)">编辑</button>
+                    <button class="link-button" type="button" @click="toggleVisibility(bookmark)">
+                      {{ bookmark.visible === false ? '设为可见' : '设为隐藏' }}
+                    </button>
+                    <button class="link-button link-button--danger" type="button" @click="deleteBookmark(bookmark.id)">
+                      删除
+                    </button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+            <p v-if="!filteredBookmarks.length && !loading" class="empty-placeholder">
+              暂无书签或未匹配到搜索结果
+            </p>
+          </div>
+        </section>
+      </main>
+    </template>
+
+    <div v-if="isAuthenticated && showEditor" class="overlay" @click.self="closeEditor">
       <section class="drawer">
         <header class="drawer__header">
           <div>

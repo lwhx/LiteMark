@@ -7,7 +7,7 @@
 1. **Fork / 克隆仓库**
    - 在 GitHub 上点击 “Fork” 将本仓库复制到自己的账号下，或 `git clone` 后推送到私有仓库。
 2. **创建 Vercel Blob（可选，使用默认存储时必选）**
-   - 登陆 [Vercel 控制台](https://vercel.com/)，在 `Storage → Blob` 新建一个 Blob Store，生成 `READ_WRITE` 令牌。
+   - 登陆 [Vercel 控制台](https://vercel.com/)，在 `Storage → Blob` 新建一个 Blob Store，生成令牌。
 3. **导入项目**
    - 打开 Vercel → “New Project”，选择刚刚 Fork 的仓库。
 4. **配置环境变量**

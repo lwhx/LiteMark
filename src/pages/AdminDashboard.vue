@@ -545,6 +545,8 @@ function goHome() {
 
 const cacheRefreshing = ref(false);
 const cacheMessage = ref('');
+const orderSaving = ref(false);
+const orderMessage = ref('');
 
 async function refreshData() {
   if (!isAuthenticated.value || cacheRefreshing.value) {
@@ -575,6 +577,49 @@ async function refreshData() {
   } finally {
     cacheRefreshing.value = false;
   }
+}
+
+async function persistOrder(list: Bookmark[]) {
+  if (!isAuthenticated.value) {
+    showLoginModal.value = true;
+    return;
+  }
+  orderSaving.value = true;
+  orderMessage.value = '';
+  try {
+    const response = await requestWithAuth(`${apiBase}/api/bookmarks/reorder`, {
+      method: 'POST',
+      body: JSON.stringify({ order: list.map((item) => item.id) })
+    });
+    if (!response.ok) {
+      const message = await response.text();
+      throw new Error(message || '保存排序失败');
+    }
+    const updated = (await response.json()) as Bookmark[];
+    bookmarks.value = updated;
+    orderMessage.value = '书签排序已更新';
+  } catch (error) {
+    orderMessage.value = error instanceof Error ? error.message : '保存排序失败';
+  } finally {
+    orderSaving.value = false;
+  }
+}
+
+async function moveBookmark(bookmark: Bookmark, direction: number) {
+  if (!isAuthenticated.value) {
+    showLoginModal.value = true;
+    return;
+  }
+  const currentIndex = bookmarks.value.findIndex((item) => item.id === bookmark.id);
+  const targetIndex = currentIndex + direction;
+  if (currentIndex === -1 || targetIndex < 0 || targetIndex >= bookmarks.value.length) {
+    return;
+  }
+  const list = [...bookmarks.value];
+  const [item] = list.splice(currentIndex, 1);
+  list.splice(targetIndex, 0, item);
+  bookmarks.value = list;
+  await persistOrder(list);
 }
 
 onMounted(() => {
@@ -703,6 +748,13 @@ onMounted(() => {
           >
             {{ cacheMessage }}
           </p>
+          <p
+            v-if="orderMessage"
+            class="alert"
+            :class="orderMessage.includes('失败') ? 'alert--error' : 'alert--success'"
+          >
+            {{ orderMessage }}
+          </p>
           <p v-if="themeMessage" class="alert alert--error">{{ themeMessage }}</p>
         </section>
 
@@ -763,6 +815,22 @@ onMounted(() => {
                   </td>
                   <td>{{ new Date(bookmark.updatedAt ?? bookmark.createdAt).toLocaleString() }}</td>
                   <td class="table-actions">
+                    <button
+                      class="link-button"
+                      type="button"
+                      :disabled="orderSaving"
+                      @click="moveBookmark(bookmark, -1)"
+                    >
+                      上移
+                    </button>
+                    <button
+                      class="link-button"
+                      type="button"
+                      :disabled="orderSaving"
+                      @click="moveBookmark(bookmark, 1)"
+                    >
+                      下移
+                    </button>
                     <button class="link-button" type="button" @click="openEdit(bookmark)">编辑</button>
                     <button class="link-button" type="button" @click="toggleVisibility(bookmark)">
                       {{ bookmark.visible === false ? '设为可见' : '设为隐藏' }}
@@ -1281,6 +1349,10 @@ tbody tr:hover {
   font-size: 12px;
   color: var(--text-muted);
   text-align: center;
+}
+
+.link-button + .link-button {
+  margin-left: 4px;
 }
 
 @media (max-width: 960px) {

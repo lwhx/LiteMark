@@ -219,6 +219,33 @@ export async function createBookmark(data: BookmarkInput): Promise<BookmarkRecor
   return bookmark;
 }
 
+export async function reorderBookmarks(order: string[]): Promise<BookmarkRecord[]> {
+  const bookmarks = await loadBookmarks();
+  const map = new Map<string, BookmarkRecord>();
+  bookmarks.forEach((bookmark) => {
+    map.set(bookmark.id, bookmark);
+  });
+
+  const reordered: BookmarkRecord[] = [];
+  order.forEach((id) => {
+    const record = map.get(id);
+    if (record) {
+      reordered.push(record);
+      map.delete(id);
+    }
+  });
+
+  bookmarks.forEach((bookmark) => {
+    if (map.has(bookmark.id)) {
+      reordered.push(bookmark);
+      map.delete(bookmark.id);
+    }
+  });
+
+  await saveBookmarks(reordered);
+  return reordered;
+}
+
 export async function updateBookmark(
   id: string,
   data: BookmarkInput

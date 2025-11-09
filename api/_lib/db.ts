@@ -49,7 +49,8 @@ async function writeBlobJson(key: string, data: unknown) {
   const body = JSON.stringify(data, null, 2);
   await put(key, body, {
     access: 'public',
-    contentType: 'application/json'
+    contentType: 'application/json',
+    addRandomSuffix: false
   });
 }
 

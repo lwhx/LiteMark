@@ -26,6 +26,7 @@ function sanitizeUrl(url: string): string {
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  console.log(req, res);
   if (handleOptions(req, res, 'GET,PUT,DELETE,OPTIONS')) {
     return;
   }

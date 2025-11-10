@@ -21,7 +21,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
+    console.log('刷新站点设置缓存');
     const settings = await forceRefreshSettingsCache();
+    console.log('刷新站点设置缓存成功', settings);
     sendJson(res, 200, settings);
   } catch (error) {
     console.error('刷新站点设置缓存失败', error);

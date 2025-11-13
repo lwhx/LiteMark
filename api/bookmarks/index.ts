@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import {
   applyCors,
+  applyNoCache,
   handleOptions,
   parseJsonBody,
   sendError,
@@ -31,6 +32,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   applyCors(res, 'GET,POST,OPTIONS');
+  applyNoCache(res);
 
   if (req.method === 'GET') {
     try {

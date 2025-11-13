@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
+import type { ComponentPublicInstance } from 'vue';
 import Sortable from 'sortablejs';
 
 type Bookmark = {
@@ -26,6 +27,11 @@ const endpoint = `${apiBase}/api/bookmarks`;
 
 const DEFAULT_TITLE = '个人书签';
 const DEFAULT_ICON = '🔖';
+const DEFAULT_CATEGORY_LABEL = '默认分类';
+const DEFAULT_CATEGORY_KEY = '';
+const DEFAULT_CATEGORY_ALIASES = new Set(
+  ['默认分类', '未分类', '默认', 'default'].map((item) => item.toLowerCase())
+);
 
 const themeOptions = [
   { value: 'light', label: '晨光浅色' },
@@ -117,13 +123,23 @@ function decodeGroupKey(key: string): string {
   return key === DEFAULT_CONTAINER_KEY ? '' : key;
 }
 
-function setContainerRef(key: string, el: HTMLElement | null) {
+type SortableRefElement = Element | (ComponentPublicInstance & { $el?: Element });
+
+function setContainerRef(key: string, el: SortableRefElement | null) {
   const encoded = encodeGroupKey(key);
-  if (el) {
-    containerRefs.set(encoded, el);
-  } else {
+  const element =
+    el instanceof HTMLElement
+      ? el
+      : el instanceof Element
+      ? el
+      : el && '$el' in el && el.$el instanceof HTMLElement
+      ? el.$el
+      : null;
+  if (!(element instanceof HTMLElement)) {
     containerRefs.delete(encoded);
+    return;
   }
+  containerRefs.set(encoded, element);
 }
 
 function destroySortables() {
@@ -336,12 +352,24 @@ watch(currentTheme, (value) => {
   applyTheme(value);
 });
 
+function normalizeCategoryInput(value?: string | null): string {
+  const trimmed = (value ?? '').trim();
+  if (!trimmed) {
+    return DEFAULT_CATEGORY_KEY;
+  }
+  const lower = trimmed.toLowerCase();
+  if (DEFAULT_CATEGORY_ALIASES.has(lower)) {
+    return DEFAULT_CATEGORY_KEY;
+  }
+  return trimmed;
+}
+
 function categoryKeyFromBookmark(bookmark: Bookmark): string {
-  return bookmark.category?.trim() ?? '';
+  return normalizeCategoryInput(bookmark.category);
 }
 
 function categoryLabelFromKey(key: string): string {
-  return key || '默认分类';
+  return key === DEFAULT_CATEGORY_KEY ? DEFAULT_CATEGORY_LABEL : key;
 }
 
 function normalizeCategory(bookmark: Bookmark) {
@@ -557,10 +585,11 @@ async function saveBookmark() {
 
   saving.value = true;
   error.value = null;
+  const normalizedCategory = normalizeCategoryInput(form.category);
   const payload = {
     title: form.title.trim(),
     url: form.url.trim(),
-    category: form.category.trim() || undefined,
+    category: normalizedCategory || undefined,
     description: form.description.trim() || undefined,
     visible: form.visible
   };
@@ -595,7 +624,7 @@ function startEdit(bookmark: Bookmark) {
   editingId.value = bookmark.id;
   form.title = bookmark.title;
   form.url = bookmark.url;
-  form.category = bookmark.category ?? '';
+  form.category = categoryKeyFromBookmark(bookmark);
   form.description = bookmark.description ?? '';
   form.visible = bookmark.visible !== false;
 }
@@ -1836,6 +1865,7 @@ function openBookmark(bookmark: Bookmark) {
   font-size: 13px;
   line-height: 1.5;
   min-height: 36px;
+  line-clamp: 2;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;

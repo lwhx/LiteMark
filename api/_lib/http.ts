@@ -15,6 +15,13 @@ export function applyCors(res: VercelResponse, methods = 'GET,POST,PUT,DELETE,OP
   }
 }
 
+export function applyNoCache(res: VercelResponse) {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  res.setHeader('Vercel-CDN-Cache-Control', 'no-store');
+}
+
 export function handleOptions(req: VercelRequest, res: VercelResponse, methods?: string) {
   if (req.method === 'OPTIONS') {
     applyCors(res, methods);

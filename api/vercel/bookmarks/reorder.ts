@@ -11,33 +11,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (handleOptions(req, res, 'POST,OPTIONS')) {
     return;
   }
-
   applyCors(res, 'POST,OPTIONS');
-
-  if (req.method !== 'POST') {
-    sendError(res, 405, 'Method Not Allowed');
-    return;
-  }
 
   const auth = requireAuth(req, res);
   if (!auth) {
     return;
   }
 
+  if (req.method !== 'POST') {
+    sendError(res, 405, 'Method Not Allowed');
+    return;
+  }
+
   try {
-    console.log('书签排序');
     const body = await parseJsonBody<ReorderBody>(req);
-    console.log('书签排序body', body);
-    if (!body.order || !Array.isArray(body.order)) {
-      sendError(res, 400, '请求体需要提供 order 数组');
+    const order = body.order;
+
+    if (!Array.isArray(order)) {
+      sendError(res, 400, 'order 必须是数组');
       return;
     }
-    console.log('书签排序order', body.order);
-    const reordered = await reorderBookmarks(body.order);
-    console.log('书签排序reordered', reordered);
-    sendJson(res, 200, reordered);
+
+    const bookmarks = await reorderBookmarks(order);
+    sendJson(res, 200, bookmarks);
   } catch (error) {
-    console.error('书签排序失败', error);  
-    sendError(res, 500, '书签排序失败');
+    console.error('重排序书签失败', error);
+    sendError(res, 500, '重排序书签失败');
   }
 }
+

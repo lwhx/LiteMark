@@ -3,7 +3,7 @@ import { applyCors, handleOptions, parseJsonBody, sendError, sendJson } from '..
 import { reorderBookmarkCategories } from '../_lib/db.js';
 import { requireAuth } from '../_lib/auth.js';
 
-type ReorderCategoryBody = {
+type ReorderCategoriesBody = {
   order?: string[];
 };
 
@@ -11,30 +11,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (handleOptions(req, res, 'POST,OPTIONS')) {
     return;
   }
-
   applyCors(res, 'POST,OPTIONS');
-
-  if (req.method !== 'POST') {
-    sendError(res, 405, 'Method Not Allowed');
-    return;
-  }
 
   const auth = requireAuth(req, res);
   if (!auth) {
     return;
   }
 
+  if (req.method !== 'POST') {
+    sendError(res, 405, 'Method Not Allowed');
+    return;
+  }
+
   try {
-    const body = await parseJsonBody<ReorderCategoryBody>(req);
-    if (!Array.isArray(body.order)) {
-      sendError(res, 400, '请求体需要提供 order 数组');
+    const body = await parseJsonBody<ReorderCategoriesBody>(req);
+    const order = body.order;
+
+    if (!Array.isArray(order)) {
+      sendError(res, 400, 'order 必须是数组');
       return;
     }
-    const updated = await reorderBookmarkCategories(body.order);
-    sendJson(res, 200, updated);
+
+    const bookmarks = await reorderBookmarkCategories(order);
+    sendJson(res, 200, bookmarks);
   } catch (error) {
-    console.error('书签分类排序失败', error);
-    sendError(res, 500, '书签分类排序失败');
+    console.error('重排序分类失败', error);
+    sendError(res, 500, '重排序分类失败');
   }
 }
 

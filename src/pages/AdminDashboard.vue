@@ -29,7 +29,8 @@ const apiBase = apiBaseRaw.replace(/\/$/, '');
 const bookmarksEndpoint = `${apiBase}/api/bookmarks`;
 
 const DEFAULT_TITLE = '个人书签';
-const DEFAULT_ICON = '🔖';
+// 默认网站图标使用 public 目录下的 LiteMark.png
+const DEFAULT_ICON = '/LiteMark.png';
 
 const themeOptions = [
   { value: 'light', label: '晨光浅色' },
@@ -59,6 +60,16 @@ const siteSettingsForm = reactive({
 const siteSettingsSaving = ref(false);
 const siteSettingsMessage = ref('');
 const siteSettingsError = ref('');
+
+// 管理员账号设置
+const adminSettingsForm = reactive({
+  username: 'admin',
+  password: '',
+  confirmPassword: ''
+});
+const adminSettingsSaving = ref(false);
+const adminSettingsMessage = ref('');
+const adminSettingsError = ref('');
 
 const showEditor = ref(false);
 const editorMode = ref<'create' | 'edit'>('create');
@@ -195,13 +206,15 @@ function escapeXml(value: string) {
 function resolveFaviconHref(icon: string): string | null {
   const value = icon.trim();
   if (!value) {
-    return null;
+    // 默认使用 public 根目录下的图标
+    return '/LiteMark.png';
   }
+  // 已是完整 URL、data URL 或以 / 开头的路径，直接使用
   if (/^(https?:|data:|\/)/i.test(value)) {
     return value;
   }
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><text x="50%" y="58%" dominant-baseline="middle" text-anchor="middle" font-size="48">${escapeXml(value)}</text></svg>`;
-  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+  // 其余情况视为 public 根目录下的文件名，例如 LiteMark128.png
+  return `/${value}`;
 }
 
 function updateFavicon(icon: string) {
@@ -301,7 +314,7 @@ async function loadBookmarks() {
   loading.value = true;
   error.value = null;
   try {
-    const response = await fetch(bookmarksEndpoint);
+    const response = await requestWithAuth(bookmarksEndpoint, { method: 'GET' });
     if (!response.ok) {
       throw new Error(`加载失败：${response.status}`);
     }
@@ -342,6 +355,26 @@ async function loadSettings() {
     const message = err instanceof Error ? err.message : '加载站点设置失败';
     siteSettingsError.value = message;
     themeMessage.value = message;
+  }
+}
+
+async function loadAdminSettings() {
+  try {
+    const response = await requestWithAuth(`${apiBase}/api/admin/credentials`, {
+      method: 'GET'
+    });
+    if (!response.ok) {
+      const message = await response.text();
+      throw new Error(message || '获取管理员账号失败');
+    }
+    const data = (await response.json()) as { username: string };
+    adminSettingsForm.username = data.username || 'admin';
+    adminSettingsForm.password = '';
+    adminSettingsForm.confirmPassword = '';
+    adminSettingsMessage.value = '';
+    adminSettingsError.value = '';
+  } catch (err) {
+    adminSettingsError.value = err instanceof Error ? err.message : '获取管理员账号失败';
   }
 }
 
@@ -529,6 +562,57 @@ async function saveSiteSettings() {
   }
 }
 
+async function saveAdminSettings() {
+  if (!isAuthenticated.value) {
+    showLoginModal.value = true;
+    return;
+  }
+  const username = adminSettingsForm.username.trim();
+  const password = adminSettingsForm.password;
+  const confirm = adminSettingsForm.confirmPassword;
+
+  if (!username) {
+    adminSettingsError.value = '管理员用户名不能为空';
+    return;
+  }
+  if (!password) {
+    adminSettingsError.value = '管理员密码不能为空';
+    return;
+  }
+  if (password.length < 6) {
+    adminSettingsError.value = '管理员密码长度至少为 6 位';
+    return;
+  }
+  if (password !== confirm) {
+    adminSettingsError.value = '两次输入的密码不一致';
+    return;
+  }
+
+  adminSettingsSaving.value = true;
+  adminSettingsMessage.value = '';
+  adminSettingsError.value = '';
+
+  try {
+    const response = await requestWithAuth(`${apiBase}/api/admin/credentials`, {
+      method: 'PUT',
+      body: JSON.stringify({ username, password })
+    });
+    if (!response.ok) {
+      const message = await response.text();
+      throw new Error(message || '保存管理员账号失败');
+    }
+    const data = (await response.json()) as { username: string };
+    adminSettingsForm.username = data.username || username;
+    adminSettingsForm.password = '';
+    adminSettingsForm.confirmPassword = '';
+    adminSettingsMessage.value = '管理员账号已保存';
+  } catch (err) {
+    adminSettingsError.value = err instanceof Error ? err.message : '保存管理员账号失败';
+  } finally {
+    adminSettingsSaving.value = false;
+  }
+}
+
 async function login() {
   loginState.loading = true;
   loginState.error = '';
@@ -553,7 +637,7 @@ async function login() {
     showLoginModal.value = false;
     loginState.username = '';
     loginState.password = '';
-    await Promise.all([loadBookmarks(), loadSettings()]);
+    await Promise.all([loadBookmarks(), loadSettings(), loadAdminSettings()]);
   } catch (err) {
     loginState.error = err instanceof Error ? err.message : '登录失败';
   } finally {
@@ -583,6 +667,279 @@ function goHome() {
 
 const orderSaving = ref(false);
 const orderMessage = ref('');
+
+const importLoading = ref(false);
+const importMessage = ref('');
+const importError = ref('');
+const importFileInput = ref<HTMLInputElement | null>(null);
+
+// 数据备份相关状态
+const backupExportLoading = ref(false);
+const backupExportMessage = ref('');
+const backupExportError = ref('');
+const backupImportLoading = ref(false);
+const backupImportMessage = ref('');
+const backupImportError = ref('');
+const backupImportFileInput = ref<HTMLInputElement | null>(null);
+const backupImportOverwrite = ref(false);
+
+async function handleImportBookmarks() {
+  if (!isAuthenticated.value) {
+    showLoginModal.value = true;
+    return;
+  }
+  
+  if (!importFileInput.value) {
+    return;
+  }
+  
+  const file = importFileInput.value.files?.[0];
+  if (!file) {
+    importError.value = '请选择要导入的书签文件';
+    return;
+  }
+  
+  if (!file.name.endsWith('.html')) {
+    importError.value = '请选择 HTML 格式的书签文件';
+    return;
+  }
+  
+  importLoading.value = true;
+  importMessage.value = '';
+  importError.value = '';
+  
+  try {
+    const fileContent = await file.text();
+    
+    const response = await requestWithAuth(`${apiBase}/api/bookmarks/import`, {
+      method: 'POST',
+      body: JSON.stringify({
+        html: fileContent,
+        overwrite: false
+      })
+    });
+    
+    if (!response.ok) {
+      let errorMessage = '导入失败';
+      try {
+        const errorData = (await response.json()) as { error?: string };
+        errorMessage = errorData.error || errorMessage;
+      } catch {
+        errorMessage = await response.text() || errorMessage;
+      }
+      throw new Error(errorMessage);
+    }
+    
+    const result = (await response.json()) as {
+      success: boolean;
+      imported: number;
+      total: number;
+      errors?: string[];
+    };
+    
+    if (result.success) {
+      importMessage.value = `成功导入 ${result.imported} 个书签，共 ${result.total} 个`;
+      if (result.errors && result.errors.length > 0) {
+        importMessage.value += `，${result.errors.length} 个失败`;
+        console.warn('导入错误:', result.errors);
+      }
+      // 重新加载书签列表
+      await loadBookmarks();
+      // 清空文件选择器
+      if (importFileInput.value) {
+        importFileInput.value.value = '';
+      }
+    } else {
+      throw new Error('导入失败');
+    }
+  } catch (err) {
+    importError.value = err instanceof Error ? err.message : '导入失败';
+  } finally {
+    importLoading.value = false;
+  }
+}
+
+function triggerImportFile() {
+  if (!isAuthenticated.value) {
+    showLoginModal.value = true;
+    return;
+  }
+  importFileInput.value?.click();
+}
+
+// 导出数据备份
+async function handleExportBackup() {
+  if (!isAuthenticated.value) {
+    showLoginModal.value = true;
+    return;
+  }
+
+  backupExportLoading.value = true;
+  backupExportMessage.value = '';
+  backupExportError.value = '';
+
+  try {
+    const response = await requestWithAuth(`${apiBase}/api/backup/export`, {
+      method: 'GET'
+    });
+
+    if (!response.ok) {
+      const message = await response.text();
+      throw new Error(message || '导出失败');
+    }
+
+    const data = await response.json();
+
+    // 创建下载链接
+    const blob = new Blob([JSON.stringify(data, null, 2)], {
+      type: 'application/json;charset=utf-8'
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const filename = `litemark-backup-${new Date().toISOString().split('T')[0]}.json`;
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    backupExportMessage.value = '数据导出成功';
+  } catch (err) {
+    backupExportError.value = err instanceof Error ? err.message : '导出失败';
+  } finally {
+    backupExportLoading.value = false;
+  }
+}
+
+// 导入数据备份
+async function handleImportBackup() {
+  if (!isAuthenticated.value) {
+    showLoginModal.value = true;
+    return;
+  }
+
+  if (!backupImportFileInput.value) {
+    return;
+  }
+
+  const file = backupImportFileInput.value.files?.[0];
+  if (!file) {
+    backupImportError.value = '请选择要导入的备份文件';
+    return;
+  }
+
+  if (!file.name.endsWith('.json')) {
+    backupImportError.value = '请选择 JSON 格式的备份文件';
+    return;
+  }
+
+  backupImportLoading.value = true;
+  backupImportMessage.value = '';
+  backupImportError.value = '';
+
+  try {
+    const fileContent = await file.text();
+    let importData: {
+      bookmarks?: Array<{
+        id?: string;
+        title: string;
+        url: string;
+        category?: string;
+        description?: string;
+        visible?: boolean;
+      }>;
+      settings?: {
+        theme?: string;
+        siteTitle?: string;
+        siteIcon?: string;
+      };
+    };
+
+    try {
+      importData = JSON.parse(fileContent);
+    } catch (parseError) {
+      throw new Error('文件格式错误：无法解析 JSON 内容');
+    }
+
+    if (!importData.bookmarks && !importData.settings) {
+      throw new Error('备份文件格式错误：未找到书签或设置数据');
+    }
+
+    // 如果选择覆盖，需要确认
+    if (backupImportOverwrite.value) {
+      if (!confirm('确定要覆盖现有数据吗？此操作无法撤销！')) {
+        backupImportLoading.value = false;
+        return;
+      }
+    }
+
+    const response = await requestWithAuth(`${apiBase}/api/backup/import`, {
+      method: 'POST',
+      body: JSON.stringify({
+        ...importData,
+        overwrite: backupImportOverwrite.value
+      })
+    });
+
+    if (!response.ok) {
+      let errorMessage = '导入失败';
+      try {
+        const errorData = (await response.json()) as { error?: string };
+        errorMessage = errorData.error || errorMessage;
+      } catch {
+        errorMessage = await response.text() || errorMessage;
+      }
+      throw new Error(errorMessage);
+    }
+
+    const result = (await response.json()) as {
+      success: boolean;
+      importedBookmarks: number;
+      updatedSettings: boolean;
+      totalBookmarks: number;
+      errors?: string[];
+    };
+
+    if (result.success) {
+      let message = '';
+      if (result.importedBookmarks > 0) {
+        message += `成功导入 ${result.importedBookmarks} 个书签`;
+      }
+      if (result.updatedSettings) {
+        message += message ? '，设置已更新' : '设置已更新';
+      }
+      if (result.errors && result.errors.length > 0) {
+        message += `，${result.errors.length} 个错误`;
+        console.warn('导入错误:', result.errors);
+      }
+      backupImportMessage.value = message || '导入成功';
+
+      // 重新加载数据
+      await Promise.all([loadBookmarks(), loadSettings()]);
+
+      // 清空文件选择器
+      if (backupImportFileInput.value) {
+        backupImportFileInput.value.value = '';
+      }
+      backupImportOverwrite.value = false;
+    } else {
+      throw new Error('导入失败');
+    }
+  } catch (err) {
+    backupImportError.value = err instanceof Error ? err.message : '导入失败';
+  } finally {
+    backupImportLoading.value = false;
+  }
+}
+
+function triggerBackupImportFile() {
+  if (!isAuthenticated.value) {
+    showLoginModal.value = true;
+    return;
+  }
+  backupImportFileInput.value?.click();
+}
 
 async function persistOrder(list: Bookmark[]) {
   if (!isAuthenticated.value) {
@@ -688,7 +1045,7 @@ onMounted(() => {
     showLoginModal.value = true;
     return;
   }
-  Promise.all([loadBookmarks(), loadSettings()]).catch((err) => {
+  Promise.all([loadBookmarks(), loadSettings(), loadAdminSettings()]).catch((err) => {
     console.error(err);
   });
 });
@@ -796,61 +1153,183 @@ onMounted(() => {
           </p>
         </section>
 
+        <section class="card backup-card">
+          <header class="card__header">
+            <div>
+              <h2>数据备份</h2>
+              <p>导出或导入数据备份文件，用于数据迁移和恢复</p>
+            </div>
+          </header>
+          <div class="backup-actions">
+            <div class="backup-export">
+              <h3>导出备份</h3>
+              <p class="backup-description">将当前所有书签和设置导出为 JSON 格式文件</p>
+              <button
+                class="button button--primary"
+                type="button"
+                :disabled="backupExportLoading || !isAuthenticated"
+                @click="handleExportBackup"
+              >
+                {{ backupExportLoading ? '导出中...' : '导出数据' }}
+              </button>
+              <p v-if="backupExportError" class="alert alert--error">{{ backupExportError }}</p>
+              <p v-else-if="backupExportMessage" class="alert alert--success">{{ backupExportMessage }}</p>
+            </div>
+            <div class="backup-import">
+              <h3>导入备份</h3>
+              <p class="backup-description">从 JSON 格式备份文件导入书签和设置</p>
+              <input
+                ref="backupImportFileInput"
+                type="file"
+                accept=".json"
+                style="display: none"
+                @change="handleImportBackup"
+              />
+              <div class="backup-import-options">
+                <label class="field field--toggle">
+                  <span>覆盖现有数据</span>
+                  <div class="toggle">
+                    <input
+                      id="backup-import-overwrite"
+                      v-model="backupImportOverwrite"
+                      type="checkbox"
+                      :disabled="backupImportLoading || !isAuthenticated"
+                    />
+                    <label for="backup-import-overwrite">
+                      {{ backupImportOverwrite ? '是' : '否' }}
+                    </label>
+                  </div>
+                </label>
+              </div>
+              <button
+                class="button button--ghost"
+                type="button"
+                :disabled="backupImportLoading || !isAuthenticated"
+                @click="triggerBackupImportFile"
+              >
+                {{ backupImportLoading ? '导入中...' : '选择文件并导入' }}
+              </button>
+              <p v-if="backupImportError" class="alert alert--error">{{ backupImportError }}</p>
+              <p v-else-if="backupImportMessage" class="alert alert--success">{{ backupImportMessage }}</p>
+            </div>
+          </div>
+        </section>
+
         <section class="card settings-card">
           <header class="card__header">
             <h2>站点设置</h2>
             <p>配置网站标题、图标以及主题风格</p>
           </header>
-          <form class="form-grid" @submit.prevent="saveSiteSettings">
-            <label class="field">
-              <span>网站标题 *</span>
-              <input
-                v-model="siteSettingsForm.title"
-                type="text"
-                maxlength="60"
-                placeholder="例如：我的书签收藏"
-                required
-                :disabled="!isAuthenticated || siteSettingsSaving"
-              />
-            </label>
-            <label class="field">
-              <span>网站图标</span>
-              <input
-                v-model="siteSettingsForm.icon"
-                type="text"
-                maxlength="512"
-                placeholder="Emoji、链接或 data URL"
-                :disabled="!isAuthenticated || siteSettingsSaving"
-              />
-            </label>
-            <label class="field">
-              <span>主题</span>
-              <select
-                v-model="selectedTheme"
-                @change="handleThemeChange"
-                :disabled="themeSaving || !isAuthenticated"
-              >
-                <option v-for="option in themeOptions" :key="option.value" :value="option.value">
-                  {{ option.label }}
-                </option>
-              </select>
-            </label>
-            <div class="settings-actions">
-              <button class="button button--primary" type="submit" :disabled="siteSettingsSaving || !isAuthenticated">
-                {{ siteSettingsSaving ? '保存中...' : '保存设置' }}
-              </button>
-            </div>
-          </form>
-          <p v-if="siteSettingsError" class="alert alert--error">{{ siteSettingsError }}</p>
-          <p v-else-if="siteSettingsMessage" class="alert alert--success">{{ siteSettingsMessage }}</p>
-          <p
-            v-if="orderMessage"
-            class="alert"
-            :class="orderMessage.includes('失败') ? 'alert--error' : 'alert--success'"
-          >
-            {{ orderMessage }}
-          </p>
-          <p v-if="themeMessage" class="alert alert--error">{{ themeMessage }}</p>
+          <div class="settings-sections">
+            <form class="form-grid" @submit.prevent="saveSiteSettings">
+              <label class="field">
+                <span>网站标题 *</span>
+                <input
+                  v-model="siteSettingsForm.title"
+                  type="text"
+                  maxlength="60"
+                  placeholder="例如：我的书签收藏"
+                  required
+                  :disabled="!isAuthenticated || siteSettingsSaving"
+                />
+              </label>
+              <label class="field">
+                <span>网站图标</span>
+                <input
+                  v-model="siteSettingsForm.icon"
+                  type="text"
+                  maxlength="512"
+                  placeholder="例如：LiteMark.png 或 /LiteMark128.png"
+                  :disabled="!isAuthenticated || siteSettingsSaving"
+                />
+              </label>
+              <label class="field">
+                <span>主题</span>
+                <select
+                  v-model="selectedTheme"
+                  @change="handleThemeChange"
+                  :disabled="themeSaving || !isAuthenticated"
+                >
+                  <option v-for="option in themeOptions" :key="option.value" :value="option.value">
+                    {{ option.label }}
+                  </option>
+                </select>
+              </label>
+              <div class="settings-actions">
+                <button
+                  class="button button--primary"
+                  type="submit"
+                  :disabled="siteSettingsSaving || !isAuthenticated"
+                >
+                  {{ siteSettingsSaving ? '保存中...' : '保存设置' }}
+                </button>
+              </div>
+            </form>
+            <p v-if="siteSettingsError" class="alert alert--error">{{ siteSettingsError }}</p>
+            <p v-else-if="siteSettingsMessage" class="alert alert--success">{{ siteSettingsMessage }}</p>
+            <p
+              v-if="orderMessage"
+              class="alert"
+              :class="orderMessage.includes('失败') ? 'alert--error' : 'alert--success'"
+            >
+              {{ orderMessage }}
+            </p>
+            <p v-if="themeMessage" class="alert alert--error">{{ themeMessage }}</p>
+
+            <hr class="settings-divider" />
+
+            <section class="admin-settings">
+              <h3>管理员账号</h3>
+              <p class="settings-help">在这里修改后台登录的用户名和密码。</p>
+              <form class="form-grid admin-settings__form" @submit.prevent="saveAdminSettings">
+                <label class="field">
+                  <span>管理员用户名</span>
+                  <input
+                    v-model="adminSettingsForm.username"
+                    type="text"
+                    maxlength="60"
+                    placeholder="例如：admin"
+                    :disabled="!isAuthenticated || adminSettingsSaving"
+                  />
+                </label>
+                <label class="field">
+                  <span>新密码</span>
+                  <input
+                    v-model="adminSettingsForm.password"
+                    type="password"
+                    minlength="6"
+                    autocomplete="new-password"
+                    placeholder="至少 6 位"
+                    :disabled="!isAuthenticated || adminSettingsSaving"
+                  />
+                </label>
+                <label class="field">
+                  <span>确认新密码</span>
+                  <input
+                    v-model="adminSettingsForm.confirmPassword"
+                    type="password"
+                    minlength="6"
+                    autocomplete="new-password"
+                    placeholder="再次输入新密码"
+                    :disabled="!isAuthenticated || adminSettingsSaving"
+                  />
+                </label>
+                <div class="settings-actions">
+                  <button
+                    class="button button--primary"
+                    type="submit"
+                    :disabled="adminSettingsSaving || !isAuthenticated"
+                  >
+                    {{ adminSettingsSaving ? '保存中...' : '保存管理员账号' }}
+                  </button>
+                </div>
+              </form>
+              <p v-if="adminSettingsError" class="alert alert--error">{{ adminSettingsError }}</p>
+              <p v-else-if="adminSettingsMessage" class="alert alert--success">
+                {{ adminSettingsMessage }}
+              </p>
+            </section>
+          </div>
         </section>
 
         <section class="card bookmarks-card">
@@ -867,6 +1346,21 @@ onMounted(() => {
                   placeholder="搜索标题、链接或分类..."
                 />
               </div>
+              <input
+                ref="importFileInput"
+                type="file"
+                accept=".html"
+                style="display: none"
+                @change="handleImportBookmarks"
+              />
+              <button
+                class="button button--ghost"
+                type="button"
+                :disabled="!isAuthenticated || importLoading"
+                @click="triggerImportFile"
+              >
+                {{ importLoading ? '导入中...' : '导入书签' }}
+              </button>
               <button
                 class="button button--primary"
                 type="button"
@@ -878,6 +1372,8 @@ onMounted(() => {
             </div>
           </header>
           <p v-if="error" class="alert alert--error">{{ error }}</p>
+          <p v-if="importError" class="alert alert--error">{{ importError }}</p>
+          <p v-if="importMessage" class="alert alert--success">{{ importMessage }}</p>
           <div class="table-wrapper">
             <table>
               <thead>
@@ -1012,7 +1508,7 @@ onMounted(() => {
           </button>
         </form>
         <footer class="dialog__footer">
-          <p>默认账号：admin / admin123，可在后端环境变量中修改。</p>
+          <p>默认账号：admin / admin123，可在下方「管理员账号」区域修改。</p>
         </footer>
       </section>
     </div>
@@ -1177,10 +1673,79 @@ onMounted(() => {
   flex-wrap: wrap;
 }
 
+.backup-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 24px;
+}
+
+.backup-export,
+.backup-import {
+  background: var(--surface-card);
+  border-radius: 16px;
+  padding: 20px;
+  box-shadow: inset 0 0 0 1px var(--surface-border);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.backup-export h3,
+.backup-import h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.backup-description {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.backup-import-options {
+  margin: 8px 0;
+}
+
 .settings-card .form-grid {
   display: grid;
   gap: 16px;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.settings-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.settings-divider {
+  border: none;
+  border-top: 1px solid var(--surface-border);
+  margin: 4px 0 12px;
+}
+
+.admin-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.admin-settings h3 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.settings-help {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.admin-settings__form {
+  margin-top: 4px;
 }
 
 .field {

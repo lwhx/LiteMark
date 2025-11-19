@@ -34,7 +34,7 @@ async function ensureDirectoryExists(
   try {
     // 尝试创建目录（如果不存在）
     const controller = new AbortController();
-    timeoutId = setTimeout(() => controller.abort(), 15000); // 15秒超时
+    timeoutId = setTimeout(() => controller.abort(), 10000); // 10秒超时
     
     const response = await fetch(dirUrl, {
       method: 'MKCOL',
@@ -79,6 +79,7 @@ async function uploadWithRetry(
   maxRetries: number = 3
 ): Promise<Response> {
   let lastError: Error | null = null;
+  let lastResponse: Response | null = null;
   
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     let timeoutId: NodeJS.Timeout | null = null;
@@ -102,6 +103,32 @@ async function uploadWithRetry(
         clearTimeout(timeoutId);
         timeoutId = null;
       }
+      
+      // 检查响应状态码，504 (Gateway Timeout) 和 502 (Bad Gateway) 应该重试
+      if (response.status === 504 || response.status === 502 || response.status === 503) {
+        lastResponse = response;
+        const responseText = await response.text().catch(() => '');
+        const isGatewayTimeout = response.status === 504 || 
+                                 responseText.includes('504') || 
+                                 responseText.includes('Gateway Time-out') ||
+                                 responseText.includes('Gateway Timeout');
+        
+        if (attempt < maxRetries) {
+          const waitTime = attempt * 3000; // 递增等待时间：3s, 6s, 9s
+          console.warn(`收到网关超时错误 (${response.status})，${waitTime}ms 后重试 (${attempt}/${maxRetries})`);
+          await new Promise(resolve => setTimeout(resolve, waitTime));
+          continue;
+        } else {
+          throw new Error(`网关超时 (${response.status})：WebDAV 服务器响应超时，请检查服务器状态或网络连接`);
+        }
+      }
+      
+      // 如果响应不成功但不是网关错误，直接返回让调用者处理
+      if (!response.ok && response.status !== 504 && response.status !== 502 && response.status !== 503) {
+        return response;
+      }
+      
+      // 成功响应
       return response;
     } catch (error: any) {
       // 清理 timeout
@@ -127,7 +154,7 @@ async function uploadWithRetry(
       
       // 如果是超时或网络错误且还有重试机会，等待后重试
       if (attempt < maxRetries && (isAbortError || isNetworkError)) {
-        const waitTime = attempt * 2000; // 递增等待时间：2s, 4s, 6s
+        const waitTime = attempt * 3000; // 递增等待时间：3s, 6s, 9s
         const errorType = isAbortError ? '超时' : '网络连接';
         console.warn(`上传失败（${errorType}），${waitTime}ms 后重试 (${attempt}/${maxRetries}):`, error.message || error.name);
         await new Promise(resolve => setTimeout(resolve, waitTime));
@@ -145,6 +172,9 @@ async function uploadWithRetry(
   }
   
   // 所有重试都失败了
+  if (lastResponse) {
+    throw new Error(`上传失败：网关错误 (${lastResponse.status})`);
+  }
   throw lastError || new Error('上传失败：未知错误');
 }
 

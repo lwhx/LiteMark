@@ -28,7 +28,7 @@ export async function backupToWebDAV(config: WebDAVConfig): Promise<void> {
     : filePath.includes('.json') 
       ? filePath 
       : `${filePath}/${filename}`;
-  
+  console.log("开始上传备份文件到 WebDAV");
   await uploadToWebDAV(
     { ...config, path: finalPath },
     content,

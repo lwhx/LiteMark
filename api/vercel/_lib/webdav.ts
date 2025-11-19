@@ -81,21 +81,30 @@ async function uploadWithRetry(
   let lastError: Error | null = null;
   let lastResponse: Response | null = null;
   
+  const contentBytes = Buffer.from(content, 'utf-8');
+  const contentLength = contentBytes.length;
+  
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     let timeoutId: NodeJS.Timeout | null = null;
     try {
       const controller = new AbortController();
-      timeoutId = setTimeout(() => controller.abort(), 60000); // 60秒超时（增加超时时间）
+      timeoutId = setTimeout(() => controller.abort(), 60000); // 60秒超时
       
+      // 构建请求头
+      // 某些 WebDAV 服务器对请求头很敏感，需要精确设置
+      const headers: Record<string, string> = {
+        'Authorization': `Basic ${auth}`,
+        'Content-Type': 'application/json; charset=utf-8',
+        'Content-Length': contentLength.toString(), // 必须准确，使用字节长度
+        'User-Agent': 'LiteMark/1.0'
+      };
+      
+      // 使用字符串作为 body（fetch 会自动编码为 UTF-8）
+      // 某些 WebDAV 服务器对 Buffer 的处理可能有问题，使用字符串更兼容
       const response = await fetch(fullUrl, {
         method: 'PUT',
-        headers: {
-          'Authorization': `Basic ${auth}`,
-          'Content-Type': 'application/json',
-          'Content-Length': content.length.toString(),
-          'User-Agent': 'LiteMark/1.0'
-        },
-        body: content,
+        headers,
+        body: content, // 使用原始字符串，fetch 会自动处理编码
         signal: controller.signal
       });
       
@@ -123,12 +132,20 @@ async function uploadWithRetry(
         }
       }
       
-      // 如果响应不成功但不是网关错误，直接返回让调用者处理
+      // 如果响应不成功但不是网关错误，记录详细信息并返回
       if (!response.ok && response.status !== 504 && response.status !== 502 && response.status !== 503) {
+        const errorText = await response.text().catch(() => '无法读取错误信息');
+        console.error(`[WebDAV] 上传失败 (${response.status}):`, {
+          status: response.status,
+          statusText: response.statusText,
+          url: fullUrl,
+          error: errorText.substring(0, 500) // 限制错误文本长度
+        });
         return response;
       }
       
       // 成功响应
+      console.log(`[WebDAV] 上传成功 (${response.status}): ${fullUrl}`);
       return response;
     } catch (error: any) {
       // 清理 timeout
@@ -188,24 +205,56 @@ export async function uploadToWebDAV(
 ): Promise<void> {
   const { url, username, password, path = 'litemark-backup/' } = config;
   
-  // 确保 URL 以 / 结尾
+  // 确保 baseUrl 不以 / 结尾
   const baseUrl = url.endsWith('/') ? url.slice(0, -1) : url;
-  const filePath = filename || path;
-  const fullUrl = `${baseUrl}${filePath.startsWith('/') ? filePath : '/' + filePath}`;
+  
+  // 构建文件路径
+  let filePath: string;
+  if (filename) {
+    // 如果提供了 filename，使用它（可能已经包含完整路径）
+    filePath = filename;
+  } else {
+    // 否则使用 path
+    filePath = path;
+  }
+  
+  // 确保 filePath 以 / 开头
+  if (!filePath.startsWith('/')) {
+    filePath = '/' + filePath;
+  }
+  
+  // 构建完整 URL
+  // 对于 WebDAV，通常路径不需要编码，但某些服务器可能需要
+  // 先尝试不编码，如果失败可以尝试编码
+  const fullUrl = `${baseUrl}${filePath}`;
+  
+  console.log(`[WebDAV] 上传文件到: ${fullUrl}`);
+  console.log(`[WebDAV] 文件路径: ${filePath}`);
+  console.log(`[WebDAV] Base URL: ${baseUrl}`);
   
   // 创建 Basic Auth header
   const auth = Buffer.from(`${username}:${password}`).toString('base64');
   
-  // 确保目录存在
+  // 确保目录存在（使用原始路径，不编码）
   await ensureDirectoryExists(baseUrl, auth, filePath);
   
   // 使用重试机制上传
+  console.log(`[WebDAV] 开始上传，内容大小: ${Buffer.from(content, 'utf-8').length} 字节`);
   const response = await uploadWithRetry(fullUrl, auth, content);
   
   if (!response.ok) {
-    const errorText = await response.text().catch(() => 'Unknown error');
-    throw new Error(`WebDAV 上传失败 (${response.status}): ${errorText}`);
+    const errorText = await response.text().catch(() => '无法读取错误信息');
+    const errorDetails = {
+      status: response.status,
+      statusText: response.statusText,
+      url: fullUrl,
+      error: errorText.substring(0, 500)
+    };
+    console.error(`[WebDAV] 上传最终失败:`, errorDetails);
+    throw new Error(`WebDAV 上传失败 (${response.status}): ${errorText.substring(0, 200)}`);
   }
+  
+  console.log(`[WebDAV] 上传完成: ${fullUrl}`);
 }
 
 /**

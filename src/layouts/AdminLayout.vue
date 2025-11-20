@@ -96,7 +96,8 @@ import {
   Document,
   Upload,
   UserFilled,
-  Menu
+  Menu,
+  InfoFilled
 } from '@element-plus/icons-vue';
 
 const route = useRoute();
@@ -123,7 +124,8 @@ const navItems = [
   { path: '/admin/categories', title: '分类管理', icon: Document },
   { path: '/admin/backup', title: '数据备份', icon: Upload },
   { path: '/admin/settings', title: '系统设置', icon: Setting },
-  { path: '/admin/account', title: '账号管理', icon: UserFilled }
+  { path: '/admin/account', title: '账号管理', icon: UserFilled },
+  { path: '/admin/about', title: '关于', icon: InfoFilled }
 ];
 
 // 当前激活路由

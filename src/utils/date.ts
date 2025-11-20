@@ -1,5 +1,5 @@
 /**
- * 获取上海时区（UTC+8）的当前日期，格式：YYYY-MM-DD
+ * 获取上海时区（UTC+8）的当前日期时间，格式：YYYY-MM-DD-HH-mm-ss
  */
 export function getShanghaiDateString(): string {
   const now = new Date();
@@ -9,8 +9,11 @@ export function getShanghaiDateString(): string {
   const year = shanghaiTime.getFullYear();
   const month = String(shanghaiTime.getMonth() + 1).padStart(2, '0');
   const day = String(shanghaiTime.getDate()).padStart(2, '0');
+  const hours = String(shanghaiTime.getHours()).padStart(2, '0');
+  const minutes = String(shanghaiTime.getMinutes()).padStart(2, '0');
+  const seconds = String(shanghaiTime.getSeconds()).padStart(2, '0');
   
-  return `${year}-${month}-${day}`;
+  return `${year}-${month}-${day}-${hours}-${minutes}-${seconds}`;
 }
 
 /**

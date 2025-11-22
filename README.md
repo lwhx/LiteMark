@@ -140,6 +140,8 @@ LiteMark 支持将数据定时备份到 WebDAV 服务器，确保数据安全。
 
 https://github.com/topqaz/LiteMark-extension-browser
 
+  - 支持当前页面一键添加
+  - 支持浏览器书签一键导入
 
 ## 环境变量清单
 

@@ -840,6 +840,18 @@ function openBookmark(bookmark: Bookmark) {
     window.open(bookmark.url, '_blank', 'noopener');
   }
 }
+
+function getFaviconUrl(url: string): string {
+  if (!url) {
+    return DEFAULT_ICON;
+  }
+  try {
+    const encodedUrl = encodeURIComponent(url);
+    return `https://t0.gstatic.cn/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&size=32&url=${encodedUrl}`;
+  } catch {
+    return DEFAULT_ICON;
+  }
+}
 </script>
 
 <template>
@@ -1030,6 +1042,12 @@ function openBookmark(bookmark: Bookmark) {
             >
               <header class="card__header">
                 <div class="card__header-main">
+                  <img
+                    :src="getFaviconUrl(bookmark.url)"
+                    :alt="bookmark.title"
+                    class="card__favicon"
+                    @error="(e) => { (e.target as HTMLImageElement).src = DEFAULT_ICON; }"
+                  />
                   <h3 class="card__title">
                     <a :href="bookmark.url" target="_blank" rel="noreferrer">{{ bookmark.title }}</a>
                   </h3>
@@ -1091,6 +1109,12 @@ function openBookmark(bookmark: Bookmark) {
             >
               <header class="card__header">
                 <div class="card__header-main">
+                  <img
+                    :src="getFaviconUrl(bookmark.url)"
+                    :alt="bookmark.title"
+                    class="card__favicon"
+                    @error="(e) => { (e.target as HTMLImageElement).src = DEFAULT_ICON; }"
+                  />
                   <h3 class="card__title">
                     <a :href="bookmark.url" target="_blank" rel="noreferrer">{{ bookmark.title }}</a>
                   </h3>
@@ -1919,6 +1943,14 @@ function openBookmark(bookmark: Bookmark) {
   gap: 8px;
   min-width: 0;
   flex: 1;
+}
+
+.card__favicon {
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  object-fit: contain;
 }
 
 .card__header-actions {

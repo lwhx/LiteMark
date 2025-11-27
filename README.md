@@ -11,6 +11,21 @@
 LiteMark 是一款基于 **Vue 3 + Vite** 的个人书签管理应用，提供响应式双端体验、后台管理面板以及 Postgres 持久化存储。当前前端和后端（Vercel Functions + Vercel Postgres）已深度集成，只需少量配置即可在本地或 Vercel 上快速运行。
 ---
 
+
+
+## 部署到 Vercel
+### 一键部署
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Ftopqaz%2FLiteMark&env=JWT_SECRET&project-name=litemark&repository-name=litemark)
+
+部署完成后手动创建Neon Serverless Postgres数据库，然后连接到这个项目即可
+### 手动部署
+1. **Fork / Clone** 仓库，并推送至自己的 Git 仓库。
+2. 新建Neon Serverless Postgres 数据库   最后绑定到自己的项目
+3. 在 Vercel 创建新项目，导入仓库。
+4. 项目设置 → **Environment Variables**，填入 `.env.example` 中的变量（见下表）。
+5. 点击 **Deploy**，等待构建完成。前端地址为 `https://<project>.vercel.app`，后台入口 `https://<project>.vercel.app/admin`。
+
+
 ## 功能亮点
 
 - 📚 **书签管理**：支持添加、编辑、删除、隐藏与排序；分类顺序与分类内顺序均可拖拽调整。
@@ -49,18 +64,6 @@ LiteMark 是一款基于 **Vue 3 + Vite** 的个人书签管理应用，提供�
 </p>
 
 ---
-
-
-## 部署到 Vercel
-### 一键部署
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Ftopqaz%2FLiteMark&env=JWT_SECRET&project-name=litemark&repository-name=litemark)
-部署完成后手动创建Neon Serverless Postgres数据库，然后连接到这个项目即可
-### 手动部署
-1. **Fork / Clone** 仓库，并推送至自己的 Git 仓库。
-2. 新建Neon Serverless Postgres 数据库   最后绑定到自己的项目
-3. 在 Vercel 创建新项目，导入仓库。
-4. 项目设置 → **Environment Variables**，填入 `.env.example` 中的变量（见下表）。
-5. 点击 **Deploy**，等待构建完成。前端地址为 `https://<project>.vercel.app`，后台入口 `https://<project>.vercel.app/admin`。
 
 
 ## WebDAV 定时备份

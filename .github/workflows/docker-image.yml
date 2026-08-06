@@ -1,9 +1,19 @@
 name: Docker Multi-Arch Build & Push
 
 on:
+  # Tag 触发
   push:
     tags:
-      - "*.*.*"   # 只有打版本 tag 才触发
+      - "*.*.*"
+
+  # 手动触发
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Docker image version"
+        required: true
+        default: "dev"
+        type: string
 
 jobs:
   build:
@@ -27,26 +37,36 @@ jobs:
 
     - name: Extract version
       id: vars
-      run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+      shell: bash
+      run: |
+        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          echo "VERSION=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+        else
+          echo "VERSION=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+        fi
 
     - name: Debug Frontend Build
       run: |
-        docker build --progress=plain --target frontend-builder -t frontend-debug .
+        docker build \
+          --progress=plain \
+          --target frontend-builder \
+          -t frontend-debug .
 
-    - name: Build and Push
+    - name: Build and Push Multi-Arch Image
       uses: docker/build-push-action@v5
       with:
         context: .
         push: true
+
+        # 同时构建 x86_64 和 ARM64
         platforms: linux/amd64,linux/arm64
+
         build-args: |
           BUILDKIT_PROGRESS=plain
+
         tags: |
           topqaz/litemark:latest
           topqaz/litemark:${{ steps.vars.outputs.VERSION }}
-          topqaz/litemark:amd64
-          topqaz/litemark:arm64
-          topqaz/litemark:amd64-${{ steps.vars.outputs.VERSION }}
-          topqaz/litemark:arm64-${{ steps.vars.outputs.VERSION }}
+
         cache-from: type=registry,ref=topqaz/litemark:cache
         cache-to: type=registry,ref=topqaz/litemark:cache,mode=max

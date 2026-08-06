@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue';
-import { useRouter } from 'vue-router';
+import { ref, reactive } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 
 const router = useRouter();
+const route = useRoute();
 
 const apiBaseRaw =
   (typeof window !== 'undefined'
@@ -28,14 +29,6 @@ const rules = {
 
 const formRef = ref();
 const loading = ref(false);
-
-// 检查是否已登录
-onMounted(() => {
-  const token = localStorage.getItem('bookmark_token');
-  if (token) {
-    router.push('/admin');
-  }
-});
 
 // 处理登录
 async function handleLogin() {
@@ -74,8 +67,11 @@ async function handleLogin() {
       
       ElMessage.success('登录成功');
       
-      // 跳转到管理后台
-      router.push('/admin');
+      // 返回登录前访问的后台页面
+      const redirect = typeof route.query.redirect === 'string'
+        ? route.query.redirect
+        : '/admin';
+      router.push(redirect);
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : '登录失败，请检查用户名和密码';
       ElMessage.error(errorMsg);

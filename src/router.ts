@@ -38,17 +38,54 @@ export const router = createRouter({
   }
 });
 
-// 路由守卫
-router.beforeEach((to, from, next) => {
-  const token = typeof window !== 'undefined' ? window.localStorage.getItem('bookmark_token') : null;
-  const isAuthenticated = Boolean(token);
+function clearStoredSession() {
+  if (typeof window === 'undefined') return;
+  window.localStorage.removeItem('bookmark_token');
+  window.localStorage.removeItem('bookmark_username');
+}
 
-  if (to.meta.requiresAuth && !isAuthenticated) {
-    next('/admin/login');
-  } else if (to.path === '/admin/login' && isAuthenticated) {
-    next('/admin');
-  } else {
-    next();
+async function hasValidSession(): Promise<boolean> {
+  if (typeof window === 'undefined') return false;
+
+  const token = window.localStorage.getItem('bookmark_token');
+  if (!token) return false;
+
+  const apiBaseRaw =
+    (window as { __APP_API_BASE_URL__?: string }).__APP_API_BASE_URL__ ?? '';
+  const apiBase = apiBaseRaw.replace(/\/$/, '');
+
+  try {
+    const response = await fetch(`${apiBase}/api/auth/me`, {
+      headers: {
+        Authorization: `Bearer ${token}`
+      },
+      cache: 'no-store'
+    });
+
+    if (response.status === 401 || response.status === 403) {
+      clearStoredSession();
+      return false;
+    }
+
+    // 网络或服务端临时异常交给页面内的请求处理，避免误删仍有效的登录状态。
+    return response.ok || response.status >= 500;
+  } catch {
+    return true;
   }
+}
+
+// 路由守卫：进入后台及离开登录页前都向服务端校验 token。
+router.beforeEach(async (to) => {
+  const shouldCheckAuth = Boolean(to.meta.requiresAuth) || to.path === '/admin/login';
+  if (!shouldCheckAuth) return true;
+
+  const isAuthenticated = await hasValidSession();
+  if (to.meta.requiresAuth && !isAuthenticated) {
+    return { path: '/admin/login', query: { redirect: to.fullPath } };
+  }
+  if (to.path === '/admin/login' && isAuthenticated) {
+    return '/admin';
+  }
+  return true;
 });
 

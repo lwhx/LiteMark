@@ -89,7 +89,12 @@ const isAuthenticated = computed(() => Boolean(authToken.value));
 const isEditMode = ref(false);
 const canEdit = computed(() => isAuthenticated.value && isEditMode.value);
 
-const showHidden = ref(false);
+const SHOW_HIDDEN_STORAGE_KEY = 'bookmark_show_hidden';
+const storedShowHidden =
+  typeof window !== 'undefined'
+    ? window.localStorage.getItem(SHOW_HIDDEN_STORAGE_KEY) === 'true'
+    : false;
+const showHidden = ref(storedShowHidden);
 const showForm = ref(false);
 const orderSaving = ref(false);
 const pendingOrder = ref<string[] | null>(null);
@@ -128,7 +133,6 @@ function toggleEditMode() {
   isEditMode.value = !isEditMode.value;
   if (!isEditMode.value) {
     showForm.value = false;
-    showHidden.value = false;
     resetForm();
     pendingOrder.value = null;
     orderMessage.value = '';
@@ -326,9 +330,13 @@ watch(currentUser, (name) => {
   }
 });
 
+watch(showHidden, (visible) => {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(SHOW_HIDDEN_STORAGE_KEY, String(visible));
+});
+
 watch(isAuthenticated, (authed) => {
   if (!authed) {
-    showHidden.value = false;
     showForm.value = false;
     isEditMode.value = false;
     pendingOrder.value = null;
@@ -445,7 +453,7 @@ const keywordFiltered = computed(() => {
 });
 
 const visibilityFiltered = computed(() => {
-  const shouldShowHidden = canEdit.value && showHidden.value;
+  const shouldShowHidden = isAuthenticated.value && showHidden.value;
   if (shouldShowHidden) {
     return keywordFiltered.value;
   }
@@ -787,7 +795,6 @@ async function login() {
     loginState.username = '';
     loginState.password = '';
     await Promise.all([loadBookmarks(), loadSettings()]);
-    showHidden.value = false;
     showForm.value = false;
     isEditMode.value = false;
   } catch (err) {
@@ -801,7 +808,6 @@ function logout() {
   authToken.value = null;
   currentUser.value = '';
   resetForm();
-  showHidden.value = false;
   showForm.value = false;
   isEditMode.value = false;
 }
@@ -857,8 +863,12 @@ async function toggleVisibility(bookmark: Bookmark) {
       const message = await response.text();
       throw new Error(message || '更新显示状态失败');
     }
-    await loadBookmarks();
-    showActionMessage(bookmark.visible === false ? '书签已设为可见' : '书签已隐藏');
+    const updated = (await response.json()) as Bookmark;
+    const index = bookmarks.value.findIndex((item) => item.id === bookmark.id);
+    if (index !== -1) {
+      bookmarks.value.splice(index, 1, updated);
+    }
+    showActionMessage(updated.visible === false ? '书签已隐藏' : '书签已设为可见');
   } catch (err) {
     error.value = toUserMessage(err, '更新显示状态失败');
   }
@@ -1053,7 +1063,7 @@ function removeTag(index: number) {
           </button>
           <span class="icon-btn-tooltip">{{ showForm ? '收起表单' : '添加新书签' }}</span>
         </div>
-        <div v-if="canEdit" class="icon-btn-wrapper">
+        <div v-if="isAuthenticated" class="icon-btn-wrapper">
           <button
             class="icon-btn"
             :class="{ 'icon-btn--active': showHidden }"
@@ -1255,14 +1265,10 @@ function removeTag(index: number) {
                     @error="(e) => { (e.target as HTMLImageElement).src = DEFAULT_ICON; }"
                   />
                   <h3 class="card__title">
-                    <a :href="bookmark.url" target="_blank" rel="noreferrer">{{ bookmark.title }}</a>
+                    <a :href="bookmark.url" target="_blank" rel="noreferrer" @click.stop>{{ bookmark.title }}</a>
                   </h3>
                 </div>
-                <div
-                  v-if="bookmark.visible === false || canEdit"
-                  class="card__header-actions"
-                >
-                  <span v-if="bookmark.visible === false" class="hidden-chip">已隐藏</span>
+                <div v-if="canEdit" class="card__header-actions">
                   <div v-if="canEdit" class="card-btn-wrapper">
                     <span
                       class="card__drag-handle"
@@ -1365,14 +1371,10 @@ function removeTag(index: number) {
                   @error="(e) => { (e.target as HTMLImageElement).src = DEFAULT_ICON; }"
                 />
                 <h3 class="card__title">
-                  <a :href="bookmark.url" target="_blank" rel="noreferrer">{{ bookmark.title }}</a>
+                  <a :href="bookmark.url" target="_blank" rel="noreferrer" @click.stop>{{ bookmark.title }}</a>
                 </h3>
               </div>
-              <div
-                v-if="bookmark.visible === false || canEdit"
-                class="card__header-actions"
-              >
-                <span v-if="bookmark.visible === false" class="hidden-chip">已隐藏</span>
+              <div v-if="canEdit" class="card__header-actions">
                 <div v-if="canEdit" class="card-btn-wrapper">
                   <span
                     class="card__drag-handle"
@@ -2444,22 +2446,11 @@ function removeTag(index: number) {
 }
 
 .card--hidden {
-  opacity: 0.65;
-  box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.25);
+  opacity: 1;
 }
 
 .card__time {
   white-space: nowrap;
-}
-
-.hidden-chip {
-  background: var(--surface-soft);
-  color: var(--text-muted);
-  padding: 3px 8px;
-  border-radius: 4px;
-  font-size: 10px;
-  font-weight: 600;
-  border: 1px solid var(--surface-border);
 }
 
 .overlay {

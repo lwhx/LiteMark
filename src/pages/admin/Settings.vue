@@ -1,7 +1,7 @@
 <template>
   <div class="settings-page">
     <h2 class="page-title">系统设置</h2>
-    <p class="page-desc">配置网站标题、图标以及主题风格</p>
+    <p class="page-desc">配置网站标题、图标、明暗模式和前台显示样式</p>
 
     <el-card class="settings-card">
       <template #header>
@@ -30,23 +30,27 @@
             :disabled="!isAuthenticated || siteSettingsSaving"
           />
         </el-form-item>
-        <el-form-item :label="isMobile ? '' : '主题'">
+        <el-form-item :label="isMobile ? '' : '明暗模式'">
           <template v-if="isMobile" #label>
-            <span class="mobile-label">主题</span>
+            <span class="mobile-label">明暗模式</span>
           </template>
-          <el-select
-            v-model="selectedTheme"
-            @change="handleThemeChange"
-            :disabled="themeSaving || !isAuthenticated"
-            style="width: 100%"
-          >
-            <el-option
-              v-for="option in themeOptions"
-              :key="option.value"
-              :label="option.label"
-              :value="option.value"
-            />
+          <el-select v-model="selectedTheme" @change="handleThemeChange"
+            :disabled="themeSaving || !isAuthenticated" style="width: 100%">
+            <el-option v-for="option in themeOptions" :key="option.value"
+              :label="option.label" :value="option.value" />
           </el-select>
+        </el-form-item>
+        <el-form-item :label="isMobile ? '' : '显示样式'">
+          <template v-if="isMobile" #label><span class="mobile-label">显示样式</span></template>
+          <div class="style-grid">
+            <button v-for="option in displayStyleOptions" :key="option.value" type="button"
+              class="style-card" :class="[`style-card--${option.value}`, { 'style-card--active': selectedDisplayStyle === option.value }]"
+              :disabled="displayStyleSaving || !isAuthenticated" @click="selectDisplayStyle(option.value)">
+              <span class="style-card__preview"><i></i><i></i><i></i><i></i></span>
+              <span class="style-card__content"><strong>{{ option.label }}</strong><small>{{ option.description }}</small></span>
+              <span class="style-card__check">{{ selectedDisplayStyle === option.value ? '✓' : '' }}</span>
+            </button>
+          </div>
         </el-form-item>
         <el-form-item class="form-submit-item">
           <el-button
@@ -273,6 +277,11 @@ const themeOptions = [
   { value: 'dark', label: '深色' }
 ];
 
+const displayStyleOptions = [
+  { value: 'classic', label: '经典卡片', description: '宽松通透的玻璃卡片' },
+  { value: 'compact', label: '紧凑网格', description: '高密度玻璃网格' }
+];
+
 const apiBaseRaw =
   (typeof window !== 'undefined'
     ? (window as { __APP_API_BASE_URL__?: string }).__APP_API_BASE_URL__
@@ -283,6 +292,9 @@ const currentTheme = ref<string>('light');
 const selectedTheme = ref<string>('light');
 const themeSaving = ref(false);
 const themeMessage = ref('');
+const currentDisplayStyle = ref<string>('classic');
+const selectedDisplayStyle = ref<string>('classic');
+const displayStyleSaving = ref(false);
 
 const siteTitle = ref<string>(DEFAULT_TITLE);
 const siteIcon = ref<string>(DEFAULT_ICON);
@@ -458,6 +470,7 @@ async function loadSettings() {
     }
     const settings = (await response.json()) as {
       theme?: string;
+      displayStyle?: string;
       siteTitle?: string;
       siteIcon?: string;
     };
@@ -467,6 +480,16 @@ async function loadSettings() {
     } else {
       currentTheme.value = themeOptions[0].value;
       selectedTheme.value = themeOptions[0].value;
+    }
+    if (
+      settings.displayStyle &&
+      displayStyleOptions.some((item) => item.value === settings.displayStyle)
+    ) {
+      currentDisplayStyle.value = settings.displayStyle;
+      selectedDisplayStyle.value = settings.displayStyle;
+    } else {
+      currentDisplayStyle.value = displayStyleOptions[0].value;
+      selectedDisplayStyle.value = displayStyleOptions[0].value;
     }
     siteTitle.value = settings.siteTitle ?? DEFAULT_TITLE;
     siteIcon.value = settings.siteIcon ?? DEFAULT_ICON;
@@ -555,6 +578,39 @@ async function handleThemeChange() {
   } finally {
     themeSaving.value = false;
   }
+}
+
+async function handleDisplayStyleChange() {
+  const value = selectedDisplayStyle.value;
+  if (!isAuthenticated.value) {
+    ElMessage.warning('请先登录');
+    selectedDisplayStyle.value = currentDisplayStyle.value;
+    return;
+  }
+  if (value === currentDisplayStyle.value) return;
+  displayStyleSaving.value = true;
+  const previous = currentDisplayStyle.value;
+  try {
+    const response = await requestWithAuth(`${apiBase}/api/settings`, {
+      method: 'PUT',
+      body: JSON.stringify({ displayStyle: value })
+    });
+    if (!response.ok) throw new Error((await response.text()) || '保存显示样式失败');
+    const result = (await response.json()) as { displayStyle?: string };
+    currentDisplayStyle.value = result.displayStyle ?? value;
+    selectedDisplayStyle.value = currentDisplayStyle.value;
+    ElMessage.success('显示样式已保存');
+  } catch (err) {
+    selectedDisplayStyle.value = previous;
+    ElMessage.error(err instanceof Error ? err.message : '保存显示样式失败');
+  } finally {
+    displayStyleSaving.value = false;
+  }
+}
+
+function selectDisplayStyle(style: string) {
+  selectedDisplayStyle.value = style;
+  void handleDisplayStyleChange();
 }
 
 async function saveSiteSettings() {
@@ -721,6 +777,19 @@ onUnmounted(() => {
   margin-bottom: 24px;
 }
 
+.style-grid { width: 100%; display: grid; grid-template-columns: repeat(2, minmax(180px, 1fr)); gap: 12px; }
+.style-card { position: relative; display: grid; grid-template-columns: 108px 1fr; align-items: center; gap: 12px; padding: 10px; border: 1px solid #dcdfe6; border-radius: 10px; background: #fff; color: #374151; text-align: left; transition: .2s ease; }
+.style-card:hover:not(:disabled) { border-color: #409eff; transform: translateY(-1px); box-shadow: 0 5px 14px rgba(64,158,255,.12); }
+.style-card--active { border-color: #409eff; box-shadow: 0 0 0 2px rgba(64,158,255,.14); }
+.style-card__preview { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px; height: 64px; padding: 8px; overflow: hidden; border: 1px solid rgba(255,255,255,.75); border-radius: 12px; background: linear-gradient(135deg,#e5e7eb,#cbd5e1); box-shadow: 0 5px 14px rgba(31,41,55,.12); }
+.style-card__preview i { border: 1px solid rgba(255,255,255,.75); border-radius: 7px; background: rgba(255,255,255,.58); box-shadow: 0 3px 8px rgba(31,41,55,.12); }
+.style-card__content { display: flex; min-width: 0; flex-direction: column; gap: 4px; }
+.style-card__content strong { font-size: 14px; }
+.style-card__content small { color: #6b7280; font-size: 12px; line-height: 1.4; }
+.style-card__check { position: absolute; top: 7px; right: 8px; display: grid; width: 19px; height: 19px; place-items: center; border-radius: 50%; background: #409eff; color: #fff; font-size: 12px; font-weight: 800; }
+.style-card--compact .style-card__preview { grid-template-columns: repeat(3,1fr); gap: 2px; padding: 5px; }
+.style-card--compact .style-card__preview i { border-radius: 2px; }
+
 .mcp-help {
   margin-bottom: 20px;
 }
@@ -791,6 +860,8 @@ onUnmounted(() => {
 }
 
 @media (max-width: 768px) {
+  .style-grid { grid-template-columns: 1fr; }
+  .style-card { grid-template-columns: 96px 1fr; }
   .settings-page {
     padding: 0;
   }
@@ -879,4 +950,3 @@ onUnmounted(() => {
   }
 }
 </style>
-

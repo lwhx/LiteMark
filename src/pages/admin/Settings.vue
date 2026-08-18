@@ -45,6 +45,7 @@
           <div class="style-grid">
             <button v-for="option in displayStyleOptions" :key="option.value" type="button"
               class="style-card" :class="[`style-card--${option.value}`, { 'style-card--active': selectedDisplayStyle === option.value }]"
+              :aria-pressed="selectedDisplayStyle === option.value"
               :disabled="displayStyleSaving || !isAuthenticated" @click="selectDisplayStyle(option.value)">
               <span class="style-card__preview"><i></i><i></i><i></i><i></i></span>
               <span class="style-card__content"><strong>{{ option.label }}</strong><small>{{ option.description }}</small></span>
@@ -279,7 +280,8 @@ const themeOptions = [
 
 const displayStyleOptions = [
   { value: 'classic', label: '经典卡片', description: '宽松通透的玻璃卡片' },
-  { value: 'compact', label: '紧凑网格', description: '高密度玻璃网格' }
+  { value: 'compact', label: '紧凑网格', description: '高密度玻璃网格' },
+  { value: 'sidebar', label: '侧栏导航', description: '分类固定在左侧浏览' }
 ];
 
 const apiBaseRaw =
@@ -789,6 +791,8 @@ onUnmounted(() => {
 .style-card__check { position: absolute; top: 7px; right: 8px; display: grid; width: 19px; height: 19px; place-items: center; border-radius: 50%; background: #409eff; color: #fff; font-size: 12px; font-weight: 800; }
 .style-card--compact .style-card__preview { grid-template-columns: repeat(3,1fr); gap: 2px; padding: 5px; }
 .style-card--compact .style-card__preview i { border-radius: 2px; }
+.style-card--sidebar .style-card__preview { grid-template-columns: 30% 1fr 1fr; grid-template-rows: repeat(2,1fr); }
+.style-card--sidebar .style-card__preview i:first-child { grid-row: 1 / -1; }
 
 .mcp-help {
   margin-bottom: 20px;

@@ -25,6 +25,7 @@ router = APIRouter()
 # 默认设置
 DEFAULT_SETTINGS = {
     "theme": "light",
+    "displayStyle": "classic",
     "siteTitle": "LiteMark",
     "siteIcon": "",
 }

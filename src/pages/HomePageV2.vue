@@ -41,6 +41,12 @@ const themeOptions = [
   { value: 'dark', label: '深色' }
 ];
 
+const displayStyleOptions = [
+  { value: 'classic', label: '经典卡片', icon: '▦', description: '宽松通透的玻璃卡片' },
+  { value: 'compact', label: '紧凑网格', icon: '▥', description: '高密度玻璃网格' },
+  { value: 'sidebar', label: '侧栏导航', icon: '◫', description: '分类固定在左侧浏览' }
+];
+
 const bookmarks = ref<Bookmark[]>([]);
 const loading = ref(false);
 const saving = ref(false);
@@ -53,6 +59,11 @@ const currentTheme = ref<string>(themeOptions[0].value);
 const selectedTheme = ref<string>(themeOptions[0].value);
 const themeSaving = ref(false);
 const themeMessage = ref('');
+const currentDisplayStyle = ref<string>(displayStyleOptions[0].value);
+const selectedDisplayStyle = ref<string>(displayStyleOptions[0].value);
+const displayStyleSaving = ref(false);
+const displayStyleMessage = ref('');
+const showStyleMenu = ref(false);
 const settingsLoaded = ref(false);
 
 const siteTitle = ref<string>(DEFAULT_TITLE);
@@ -349,6 +360,11 @@ function applyTheme(theme: string) {
   document.documentElement.setAttribute('data-theme', theme);
 }
 
+function applyDisplayStyle(style: string) {
+  if (typeof document === 'undefined') return;
+  document.documentElement.setAttribute('data-display-style', style);
+}
+
 let defaultFaviconHref: string | null = null;
 
 function escapeXml(value: string) {
@@ -413,6 +429,10 @@ function handleSiteSettingsInput() {
 
 watch(currentTheme, (value) => {
   applyTheme(value);
+});
+
+watch(currentDisplayStyle, (value) => {
+  applyDisplayStyle(value);
 });
 
 function normalizeCategoryInput(value?: string | null): string {
@@ -595,6 +615,7 @@ async function loadSettings() {
     }
     const settings = (await response.json()) as {
       theme?: string;
+      displayStyle?: string;
       siteTitle?: string;
       siteIcon?: string;
     };
@@ -605,11 +626,24 @@ async function loadSettings() {
       currentTheme.value = themeOptions[0].value;
       selectedTheme.value = themeOptions[0].value;
     }
+    if (
+      settings.displayStyle &&
+      displayStyleOptions.some((item) => item.value === settings.displayStyle)
+    ) {
+      currentDisplayStyle.value = settings.displayStyle;
+      selectedDisplayStyle.value = settings.displayStyle;
+    } else {
+      currentDisplayStyle.value = displayStyleOptions[0].value;
+      selectedDisplayStyle.value = displayStyleOptions[0].value;
+    }
     siteTitle.value = settings.siteTitle ?? DEFAULT_TITLE;
     siteIcon.value = settings.siteIcon ?? DEFAULT_ICON;
+    applyTheme(currentTheme.value);
+    applyDisplayStyle(currentDisplayStyle.value);
     applySiteMeta(siteTitle.value, siteIcon.value);
     settingsLoaded.value = true;
     themeMessage.value = '';
+    displayStyleMessage.value = '';
   } catch (err) {
     themeMessage.value = err instanceof Error ? err.message : '加载主题配置失败';
   }
@@ -769,6 +803,43 @@ async function handleThemeChange() {
     themeSaving.value = false;
   }
 }
+
+async function handleDisplayStyleChange() {
+  if (!ensureEditable()) {
+    selectedDisplayStyle.value = currentDisplayStyle.value;
+    return;
+  }
+  const value = selectedDisplayStyle.value;
+  if (value === currentDisplayStyle.value) return;
+  displayStyleSaving.value = true;
+  displayStyleMessage.value = '';
+  const previous = currentDisplayStyle.value;
+  try {
+    const response = await requestWithAuth(`${apiBase}/api/settings`, {
+      method: 'PUT',
+      body: JSON.stringify({ displayStyle: value })
+    });
+    if (!response.ok) throw new Error((await response.text()) || '保存显示样式失败');
+    const result = (await response.json()) as { displayStyle?: string };
+    currentDisplayStyle.value = result.displayStyle ?? value;
+    selectedDisplayStyle.value = currentDisplayStyle.value;
+  } catch (err) {
+    displayStyleMessage.value = err instanceof Error ? err.message : '保存显示样式失败';
+    selectedDisplayStyle.value = previous;
+  } finally {
+    displayStyleSaving.value = false;
+  }
+}
+
+function selectDisplayStyle(style: string) {
+  selectedDisplayStyle.value = style;
+  showStyleMenu.value = false;
+  void handleDisplayStyleChange();
+}
+
+const activeDisplayStyle = computed(
+  () => displayStyleOptions.find((style) => style.value === selectedDisplayStyle.value) ?? displayStyleOptions[0]
+);
 
 async function login() {
   loginState.loading = true;
@@ -1002,7 +1073,7 @@ function removeTag(index: number) {
 </script>
 
 <template>
-  <div class="layout">
+  <div class="layout" :data-display-style="currentDisplayStyle">
     <header class="topbar">
       <div class="brand">
         <span v-if="!siteIconIsImage" class="brand__icon">{{ siteIconDisplay }}</span>
@@ -1022,15 +1093,36 @@ function removeTag(index: number) {
       </div>
       <div class="topbar__actions">
         <div v-if="canEdit" class="icon-btn-wrapper">
-          <button
-            class="icon-btn"
-            type="button"
+          <button class="icon-btn" type="button"
             @click="selectedTheme = selectedTheme === 'light' ? 'dark' : 'light'; handleThemeChange()"
-            :disabled="themeSaving"
-          >
+            :disabled="themeSaving" :aria-label="selectedTheme === 'light' ? '切换深色模式' : '切换浅色模式'">
             {{ selectedTheme === 'light' ? '🌙' : '☀️' }}
           </button>
           <span class="icon-btn-tooltip">{{ selectedTheme === 'light' ? '切换深色模式' : '切换浅色模式' }}</span>
+        </div>
+        <div v-if="canEdit" class="icon-btn-wrapper style-picker">
+          <button
+            class="icon-btn"
+            type="button"
+            aria-label="选择显示样式"
+            :aria-expanded="showStyleMenu"
+            @click="showStyleMenu = !showStyleMenu"
+            :disabled="displayStyleSaving"
+          >
+            {{ activeDisplayStyle.icon }}
+          </button>
+          <span v-if="!showStyleMenu" class="icon-btn-tooltip">切换显示样式</span>
+          <div v-if="showStyleMenu" class="style-menu">
+            <p class="style-menu__title">显示样式</p>
+            <button v-for="style in displayStyleOptions" :key="style.value" type="button"
+              class="style-option" :class="{ 'style-option--active': selectedDisplayStyle === style.value }"
+              :aria-pressed="selectedDisplayStyle === style.value"
+              @click="selectDisplayStyle(style.value)">
+              <span class="style-option__icon">{{ style.icon }}</span>
+              <span class="style-option__copy"><strong>{{ style.label }}</strong><small>{{ style.description }}</small></span>
+              <span class="style-option__check">{{ selectedDisplayStyle === style.value ? '✓' : '' }}</span>
+            </button>
+          </div>
         </div>
         <div v-if="isAuthenticated" class="icon-btn-wrapper">
           <button
@@ -1105,6 +1197,7 @@ function removeTag(index: number) {
       </nav>
 
       <p v-if="themeMessage" class="alert alert--error">{{ themeMessage }}</p>
+      <p v-if="displayStyleMessage" class="alert alert--error">{{ displayStyleMessage }}</p>
       <p v-if="orderMessage" class="alert alert--success">{{ orderMessage }}</p>
       <p v-if="actionMessage" class="alert alert--success">{{ actionMessage }}</p>
       <section v-if="canEdit && showForm" class="form-card">
@@ -1702,21 +1795,32 @@ function removeTag(index: number) {
 }
 
 .icon-btn--accent {
-  background: linear-gradient(145deg, #343a40, #495057);
-  color: #fff;
-  border-color: #343a40;
+  background: linear-gradient(145deg, var(--accent-start), var(--accent-end));
+  color: var(--tab-active-text);
+  border-color: var(--accent-start);
   font-size: 22px;
   font-weight: 300;
 }
 
 .icon-btn--accent:hover:not(:disabled) {
-  background: linear-gradient(145deg, #495057, #6c757d);
+  background: linear-gradient(145deg, var(--accent-end), var(--accent-start));
 }
 
 /* 按钮工具提示 */
 .icon-btn-wrapper {
   position: relative;
 }
+
+.style-menu { position: absolute; top: calc(100% + 12px); right: 0; width: 270px; padding: 10px; border: 1px solid var(--surface-border); border-radius: 14px; background: var(--surface-strong); box-shadow: 0 14px 36px var(--shadow-strong); backdrop-filter: blur(20px); z-index: 120; }
+.style-menu__title { margin: 2px 6px 8px; color: var(--text-muted); font-size: 12px; font-weight: 700; }
+.style-option { width: 100%; display: grid; grid-template-columns: 34px 1fr 18px; align-items: center; gap: 8px; padding: 10px 8px; border: 0; border-radius: 9px; background: transparent; color: var(--text-secondary); text-align: left; }
+.style-option:hover { background: var(--surface-soft); }
+.style-option--active { color: var(--accent-text); background: var(--tag-bg); }
+.style-option__icon { display: grid; width: 30px; height: 30px; place-items: center; border: 1px solid var(--surface-border); border-radius: 7px; background: var(--surface-soft); font-size: 17px; }
+.style-option__copy { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
+.style-option__copy strong { font-size: 13px; }
+.style-option__copy small { overflow: hidden; color: var(--text-muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.style-option__check { text-align: center; font-weight: 700; }
 
 .icon-btn-tooltip {
   position: absolute;
@@ -1838,16 +1942,16 @@ function removeTag(index: number) {
 }
 
 .tab--active {
-  background: linear-gradient(145deg, #343a40, #495057);
-  color: #fff;
-  border-color: #343a40;
-  box-shadow: 0 4px 12px rgba(52, 58, 64, 0.25);
+  background: linear-gradient(145deg, var(--tab-active-bg-start), var(--tab-active-bg-end));
+  color: var(--tab-active-text);
+  border-color: var(--tab-active-bg-start);
+  box-shadow: 0 4px 12px var(--accent-shadow);
 }
 
 .tab--active:hover {
-  background: linear-gradient(145deg, #343a40, #495057);
-  color: #fff;
-  border-color: #343a40;
+  background: linear-gradient(145deg, var(--tab-active-bg-start), var(--tab-active-bg-end));
+  color: var(--tab-active-text);
+  border-color: var(--tab-active-bg-start);
   transform: translateY(-1px);
   box-shadow: 0 8px 18px rgba(52, 58, 64, 0.32);
 }
@@ -2160,14 +2264,14 @@ function removeTag(index: number) {
 }
 
 .button--primary {
-  background: linear-gradient(145deg, #343a40, #495057);
-  color: #fff;
-  border-color: #343a40;
+  background: linear-gradient(145deg, var(--accent-start), var(--accent-end));
+  color: var(--tab-active-text);
+  border-color: var(--accent-start);
   box-shadow: 0 4px 12px rgba(52, 58, 64, 0.3);
 }
 
 .button--primary:hover:not(:disabled) {
-  background: linear-gradient(145deg, #495057, #6c757d);
+  background: linear-gradient(145deg, var(--accent-end), var(--accent-start));
 }
 
 .button--ghost {
@@ -2828,7 +2932,7 @@ function removeTag(index: number) {
 
 @media (max-width: 600px) {
   .card-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: 1fr;
     gap: 10px;
   }
 
@@ -2847,6 +2951,684 @@ function removeTag(index: number) {
 
   .card__url {
     font-size: 12px;
+  }
+}
+
+/* 两种显示样式共享玻璃拟态，只改变布局密度 */
+.layout[data-display-style] .topbar {
+  top: 12px;
+  width: calc(100% - 24px);
+  max-width: 1320px;
+  margin: 12px auto 0;
+  border: 1px solid var(--surface-border);
+  border-radius: 20px;
+  box-shadow: 0 16px 40px var(--surface-shadow);
+  backdrop-filter: blur(28px) saturate(150%);
+  -webkit-backdrop-filter: blur(28px) saturate(150%);
+}
+
+.layout[data-display-style] .main {
+  width: min(1280px, 100%);
+}
+
+.layout[data-display-style] .category-group,
+.layout[data-display-style] .form-card {
+  padding: 24px;
+  border-radius: 24px;
+  background: var(--surface-glass);
+  box-shadow: 0 18px 48px var(--surface-shadow);
+  backdrop-filter: blur(24px) saturate(140%);
+  -webkit-backdrop-filter: blur(24px) saturate(140%);
+}
+
+.layout[data-display-style] .card {
+  padding: 18px;
+  border-radius: 20px;
+  background: var(--surface-card);
+  box-shadow: 0 10px 28px var(--surface-shadow);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+.layout[data-display-style] .card:hover {
+  transform: translateY(-4px);
+}
+
+.layout[data-display-style] .tab,
+.layout[data-display-style] .icon-btn {
+  border-radius: 999px;
+}
+
+.layout[data-display-style='compact'] .topbar {
+  padding: 10px 20px;
+}
+
+.layout[data-display-style='compact'] .brand {
+  gap: 10px;
+}
+
+.layout[data-display-style='compact'] .brand__search {
+  max-width: 300px;
+  padding: 6px 10px;
+}
+
+.layout[data-display-style='compact'] .icon-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 7px;
+  font-size: 15px;
+}
+
+.layout[data-display-style='compact'] .main {
+  width: min(1440px, 100%);
+  margin-block: 20px;
+  gap: 14px;
+  padding-inline: 16px;
+}
+
+.layout[data-display-style='compact'] .category-tabs {
+  gap: 4px;
+}
+
+.layout[data-display-style='compact'] .tab {
+  padding: 5px 10px;
+}
+
+.layout[data-display-style='compact'] .category-group {
+  gap: 8px;
+  padding: 12px;
+  border-radius: 8px;
+}
+
+.layout[data-display-style='compact'] .category-title {
+  font-size: 15px;
+}
+
+.layout[data-display-style='compact'] .card-grid {
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  grid-auto-rows: auto;
+  gap: 7px;
+}
+
+.layout[data-display-style='compact'] .card {
+  height: auto;
+  gap: 5px;
+  padding: 10px;
+  border-radius: 8px;
+}
+
+.layout[data-display-style='compact'] .card__favicon {
+  width: 18px;
+  height: 18px;
+}
+
+.layout[data-display-style='compact'] .card__title {
+  font-size: 13px;
+}
+
+.layout[data-display-style='compact'] .card__description {
+  min-height: 0;
+  font-size: 12px;
+  -webkit-line-clamp: 1;
+}
+
+.layout[data-display-style='compact'] .card__tags {
+  flex-wrap: nowrap;
+  gap: 3px;
+  overflow: hidden;
+}
+
+.layout[data-display-style='compact'] .card__tag {
+  padding: 1px 5px;
+}
+
+.layout[data-display-style='compact'] .card__url {
+  display: none;
+}
+
+.layout[data-display-style='compact'] .card__header-actions {
+  gap: 3px;
+}
+
+.layout[data-display-style='compact'] .card__action-button {
+  width: 22px;
+  height: 22px;
+}
+
+/* 侧栏导航：分类驻留左侧，内容在右侧连续浏览 */
+.layout[data-display-style='sidebar'] .topbar {
+  max-width: 1440px;
+}
+
+.layout[data-display-style='sidebar'] .main {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  align-items: start;
+  width: min(1440px, 100%);
+  gap: 20px 24px;
+}
+
+.layout[data-display-style='sidebar'] .main > :not(.category-tabs) {
+  grid-column: 2;
+}
+
+.layout[data-display-style='sidebar'] .category-tabs {
+  position: sticky;
+  top: 112px;
+  grid-column: 1;
+  grid-row: 1;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  max-height: calc(100vh - 136px);
+  padding: 14px;
+  overflow-y: auto;
+  border: 1px solid var(--surface-border);
+  border-radius: 18px;
+  background: var(--surface-glass);
+  box-shadow: 0 14px 36px var(--surface-shadow);
+  backdrop-filter: blur(22px) saturate(140%);
+  -webkit-backdrop-filter: blur(22px) saturate(140%);
+}
+
+.layout[data-display-style='sidebar'] .tab {
+  justify-content: space-between;
+  width: 100%;
+  box-shadow: none;
+}
+
+.layout[data-display-style='sidebar'] .tab__badge {
+  margin-left: auto;
+}
+
+.layout[data-display-style='sidebar'] .category-group {
+  padding: 20px;
+}
+
+.layout[data-display-style='sidebar'] .card-grid {
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .layout[data-display-style] .topbar,
+  .layout[data-display-style] .category-group,
+  .layout[data-display-style] .form-card,
+  .layout[data-display-style] .card {
+    background: var(--surface-strong);
+  }
+}
+
+.icon-btn:focus-visible,
+.tab:focus-visible,
+.style-option:focus-visible,
+.card__action-button:focus-visible,
+.button:focus-visible,
+.category-toggle:focus-visible {
+  outline: 3px solid var(--input-border-focus);
+  outline-offset: 2px;
+}
+
+@media (max-width: 900px) {
+  .layout[data-display-style='sidebar'] .main {
+    display: flex;
+    width: min(1280px, 100%);
+    gap: 24px;
+  }
+
+  .layout[data-display-style='sidebar'] .main > :not(.category-tabs) {
+    grid-column: auto;
+  }
+
+  .layout[data-display-style='sidebar'] .category-tabs {
+    position: static;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    max-height: none;
+    padding: 0 0 6px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  .layout[data-display-style='sidebar'] .tab {
+    width: auto;
+  }
+
+}
+
+@media (max-width: 768px) {
+  .style-picker {
+    position: static;
+  }
+
+  .style-menu {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 12px;
+    left: 12px;
+    width: auto;
+    max-height: min(60dvh, 320px);
+    overflow-y: auto;
+  }
+
+  .layout[data-display-style] .topbar {
+    position: relative;
+    top: 0;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-rows: auto auto;
+    align-items: center;
+    width: calc(100% - 12px);
+    margin-top: 6px;
+    padding: 10px;
+    border-radius: 16px;
+    gap: 8px 10px;
+    overflow: visible;
+  }
+
+  .layout[data-display-style] .brand {
+    display: contents;
+  }
+
+  .layout[data-display-style] .brand__icon {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .layout[data-display-style] .brand h1 {
+    grid-column: 2;
+    grid-row: 1;
+    min-width: 0;
+    overflow: hidden;
+    font-size: 20px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .layout[data-display-style] .brand__search {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+    padding: 7px 10px;
+  }
+
+  .layout[data-display-style] .brand__search input {
+    min-width: 0;
+  }
+
+  .layout[data-display-style] .topbar__actions {
+    grid-column: 3;
+    grid-row: 1;
+    display: flex;
+    justify-self: end;
+    width: auto;
+    max-width: 55vw;
+    min-width: 0;
+    flex-wrap: nowrap;
+    gap: 6px;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+  }
+
+  .layout[data-display-style] .topbar__actions::-webkit-scrollbar {
+    display: none;
+  }
+
+  .layout[data-display-style] .topbar__actions:has(.style-menu) {
+    overflow: visible;
+  }
+
+  .layout[data-display-style] .topbar__actions > * {
+    flex: 0 0 auto;
+    min-width: 0;
+  }
+
+  .layout[data-display-style] .profile {
+    max-width: 100%;
+    margin-left: 0;
+  }
+
+  .layout[data-display-style] .profile__name {
+    max-width: 120px;
+  }
+
+  .layout[data-display-style] .main {
+    width: 100%;
+    min-width: 0;
+    margin: 10px auto;
+    padding: 0 8px 32px;
+    gap: 10px;
+  }
+
+  .layout[data-display-style] .category-tabs {
+    position: sticky;
+    top: 4px;
+    z-index: 9;
+    width: 100%;
+    min-width: 0;
+    flex-wrap: nowrap;
+    gap: 5px;
+    padding: 5px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-x: contain;
+    border: 1px solid var(--surface-border);
+    border-radius: 12px;
+    background: var(--surface-glass);
+    box-shadow: 0 6px 18px var(--surface-shadow);
+    backdrop-filter: blur(18px) saturate(140%);
+    -webkit-backdrop-filter: blur(18px) saturate(140%);
+    scrollbar-width: none;
+  }
+
+  .layout[data-display-style] .category-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .layout[data-display-style] .tab {
+    flex: 0 0 auto;
+    padding: 6px 9px;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+
+  .layout[data-display-style] .category-group,
+  .layout[data-display-style] .form-card {
+    width: 100%;
+    min-width: 0;
+    padding: 10px;
+    border-radius: 14px;
+  }
+
+  .layout[data-display-style] .category-group {
+    gap: 8px;
+  }
+
+  .layout[data-display-style] .category-group__header {
+    min-width: 0;
+    gap: 8px;
+  }
+
+  .layout[data-display-style] .category-title {
+    min-width: 0;
+    gap: 7px;
+    font-size: 15px;
+  }
+
+  .layout[data-display-style] .category-title__text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .layout[data-display-style] .category-header-right {
+    flex-shrink: 0;
+  }
+
+  .layout[data-display-style] .card-grid,
+  .layout[data-display-style='sidebar'] .card-grid {
+    width: 100%;
+    min-width: 0;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 7px;
+  }
+
+  .layout[data-display-style='compact'] .card-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .layout[data-display-style] .card {
+    width: 100%;
+    min-width: 0;
+    height: auto;
+    gap: 6px;
+    padding: 10px;
+    border-radius: 11px;
+    overflow: hidden;
+  }
+
+  .layout[data-display-style='compact'] .card {
+    gap: 4px;
+    padding: 8px;
+    border-radius: 9px;
+  }
+
+  .layout[data-display-style] .card__header {
+    min-width: 0;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 5px;
+  }
+
+  .layout[data-display-style] .card__header-main,
+  .layout[data-display-style] .card__title,
+  .layout[data-display-style] .card__description,
+  .layout[data-display-style] .card__tags,
+  .layout[data-display-style] .card__url {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .layout[data-display-style] .card__header-actions {
+    width: 100%;
+    justify-content: flex-end;
+    gap: 3px;
+  }
+
+  .layout[data-display-style] .card__action-button,
+  .layout[data-display-style] .card__drag-handle {
+    width: 22px;
+    height: 22px;
+    font-size: 12px;
+  }
+
+  .layout[data-display-style] .card__favicon {
+    width: 17px;
+    height: 17px;
+  }
+
+  .layout[data-display-style] .card__title {
+    font-size: 13px;
+  }
+
+  .layout[data-display-style] .card__description {
+    min-height: 0;
+    font-size: 11px;
+    line-height: 1.4;
+    -webkit-line-clamp: 2;
+  }
+
+  .layout[data-display-style] .card__tags {
+    gap: 3px;
+    flex-wrap: wrap;
+    overflow: hidden;
+  }
+
+  .layout[data-display-style] .card__tag {
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+    padding: 1px 4px;
+    font-size: 9px;
+    text-overflow: ellipsis;
+  }
+
+  .layout[data-display-style] .card__tag:nth-child(n + 3) {
+    display: none;
+  }
+
+  .layout[data-display-style] .card__url {
+    display: none;
+  }
+
+  .layout[data-display-style] .card__tooltip,
+  .ai-btn-tooltip,
+  .icon-btn-tooltip,
+  .card-btn-tooltip {
+    display: none;
+  }
+
+  .layout[data-display-style] .form-row,
+  .layout[data-display-style] .form-row--2col {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .layout[data-display-style] .field,
+  .layout[data-display-style] .tags-input,
+  .layout[data-display-style] .field input,
+  .layout[data-display-style] .field textarea {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .layout[data-display-style] .tags-input__tag {
+    min-width: 0;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+
+  .layout[data-display-style] .form-row--footer {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .layout[data-display-style] .footer-left {
+    justify-content: space-between;
+  }
+
+  .layout[data-display-style] .form-buttons {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .layout[data-display-style] .form-buttons .button {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .layout[data-display-style] .form-buttons .button:only-child {
+    grid-column: 1 / -1;
+  }
+
+  .layout[data-display-style='sidebar'] .category-tabs {
+    position: sticky;
+    padding: 5px;
+    border: 1px solid var(--surface-border);
+    border-radius: 12px;
+    background: var(--surface-glass);
+    box-shadow: 0 6px 18px var(--surface-shadow);
+    backdrop-filter: blur(18px) saturate(140%);
+    -webkit-backdrop-filter: blur(18px) saturate(140%);
+  }
+
+  .layout[data-display-style='compact'] .tab {
+    padding: 5px 8px;
+  }
+
+  .layout[data-display-style='compact'] .card__description {
+    -webkit-line-clamp: 2;
+  }
+}
+
+@media (max-width: 480px) {
+  .layout[data-display-style] .card-grid,
+  .layout[data-display-style='compact'] .card-grid,
+  .layout[data-display-style='sidebar'] .card-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .style-menu {
+    right: 8px;
+    left: 8px;
+  }
+
+  .layout[data-display-style] .topbar {
+    width: calc(100% - 8px);
+    margin-top: 4px;
+    padding: 8px;
+    border-radius: 14px;
+  }
+
+  .layout[data-display-style] .brand h1 {
+    font-size: 17px;
+  }
+
+  .layout[data-display-style] .brand__icon--image img {
+    width: 24px;
+    height: 24px;
+  }
+
+  .layout[data-display-style] .topbar__actions {
+    max-width: 58vw;
+    gap: 4px;
+  }
+
+  .layout[data-display-style] .profile__name {
+    display: none;
+  }
+
+  .layout[data-display-style] .icon-btn {
+    width: 32px;
+    height: 32px;
+    font-size: 14px;
+  }
+
+  .layout[data-display-style] .main {
+    margin-top: 8px;
+    padding: 0 6px 28px;
+  }
+
+  .layout[data-display-style] .category-group,
+  .layout[data-display-style] .form-card {
+    padding: 8px;
+    border-radius: 12px;
+  }
+
+  .layout[data-display-style] .card {
+    padding: 8px;
+  }
+
+  .layout[data-display-style='compact'] .card {
+    padding: 7px;
+  }
+
+  .layout[data-display-style] .card__title {
+    font-size: 12px;
+  }
+
+  .layout[data-display-style] .card__description {
+    font-size: 10px;
+    -webkit-line-clamp: 2;
+  }
+
+  .layout[data-display-style] .form-buttons {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card,
+  .tab,
+  .icon-btn,
+  .style-option {
+    transition: none;
+  }
+
+  .layout[data-display-style] .card:hover {
+    transform: none;
   }
 }
 

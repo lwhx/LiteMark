@@ -8,6 +8,7 @@ from typing import Optional, List, Any
 class SettingsResponse(BaseModel):
     """设置响应"""
     theme: str = "light"
+    displayStyle: str = "classic"
     siteTitle: str = "LiteMark"
     siteIcon: str = ""
 
@@ -15,6 +16,7 @@ class SettingsResponse(BaseModel):
 class SettingsUpdate(BaseModel):
     """更新设置"""
     theme: Optional[str] = None
+    displayStyle: Optional[str] = None
     siteTitle: Optional[str] = None
     siteIcon: Optional[str] = None
 

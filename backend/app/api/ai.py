@@ -23,7 +23,7 @@ from app.services.ai.summarizer import summarize_bookmark, summarize_url, batch_
 from app.services.ai.task_progress import create_task, get_task, get_all_tasks, cleanup_old_tasks
 from app.services.bookmark import get_bookmark_by_id, get_categories, create_bookmark
 from app.schemas.bookmark import BookmarkCreate
-from app.utils.security import get_current_user, get_optional_user
+from app.utils.security import get_current_user
 from app.config import get_settings
 
 router = APIRouter()
@@ -46,7 +46,7 @@ def check_openai_configured():
 async def classify_endpoint(
     data: ClassifyRequest,
     session: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_optional_user)
+    current_user: dict = Depends(get_current_user)
 ):
     """智能分类 - 为书签推荐分类"""
     check_openai_configured()
@@ -83,7 +83,7 @@ async def classify_endpoint(
 async def summarize_endpoint(
     data: SummarizeRequest,
     session: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_optional_user)
+    current_user: dict = Depends(get_current_user)
 ):
     """内容摘要 - 抓取网页并生成摘要"""
     check_openai_configured()
@@ -192,9 +192,9 @@ async def ai_status(
 @router.post("/fetch-page-info")
 async def fetch_page_info_endpoint(
     data: SummarizeRequest,
-    current_user: dict = Depends(get_optional_user)
+    current_user: dict = Depends(get_current_user)
 ):
-    """获取网页信息（标题、描述等）- 不需要 AI"""
+    """获取网页信息（标题、描述等）"""
     from app.utils.web_scraper import fetch_page_content
 
     if not data.url:

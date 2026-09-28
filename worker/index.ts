@@ -1190,6 +1190,15 @@ const handleAi = async (request: Request, env: Env, path: string): Promise<Respo
     });
   }
 
+  // AI 状态可公开读取；其余 AI 接口会触发网页抓取、模型调用或访问任务数据，
+  // 统一要求管理员认证。集中在入口校验可避免新增接口时遗漏权限控制。
+  if (path.startsWith('/api/ai/')) {
+    const user = await requireUser(request, env);
+    if (user instanceof Response) {
+      return user;
+    }
+  }
+
   if (path === '/api/ai/fetch-page-info' && request.method === 'POST') {
     const body = await readJson<{ url?: string }>(request);
     if (!body.url) {
@@ -1204,7 +1213,6 @@ const handleAi = async (request: Request, env: Env, path: string): Promise<Respo
   }
 
   if (path === '/api/ai/summarize' && request.method === 'POST') {
-    const user = await optionalUser(request, env);
     const body = await readJson<{ bookmark_id?: string; url?: string }>(request);
     let targetUrl = body.url;
     if (body.bookmark_id) {
@@ -1286,10 +1294,6 @@ const handleAi = async (request: Request, env: Env, path: string): Promise<Respo
   }
 
   if (path === '/api/ai/quick-add' && request.method === 'POST') {
-    const user = await requireUser(request, env);
-    if (user instanceof Response) {
-      return user;
-    }
     const body = await readJson<{ url?: string }>(request);
     if (!body.url) {
       return error('请提供 url');
@@ -1312,10 +1316,6 @@ const handleAi = async (request: Request, env: Env, path: string): Promise<Respo
   }
 
   if (path === '/api/ai/quick-add-with-title' && request.method === 'POST') {
-    const user = await requireUser(request, env);
-    if (user instanceof Response) {
-      return user;
-    }
     const body = await readJson<{ url?: string; title?: string }>(request);
     if (!body.url || !body.title) {
       return error('请提供 url 和 title');
@@ -1338,10 +1338,6 @@ const handleAi = async (request: Request, env: Env, path: string): Promise<Respo
   }
 
   if (path === '/api/ai/quick-add-with-category' && request.method === 'POST') {
-    const user = await requireUser(request, env);
-    if (user instanceof Response) {
-      return user;
-    }
     const body = await readJson<{ url?: string; title?: string; category?: string }>(request);
     if (!body.url || !body.title || !body.category) {
       return error('请提供 url、title 和 category');

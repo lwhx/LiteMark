@@ -205,6 +205,7 @@ LiteMark 的接口前缀统一为 `/api`，除特别说明外均返回 JSON。�
 
 ### `GET /api/ai/status`
 - **描述**：检查 AI 服务状态
+- **鉴权**：不需要
 - **响应**：
   ```json
   {
@@ -216,7 +217,7 @@ LiteMark 的接口前缀统一为 `/api`，除特别说明外均返回 JSON。�
 
 ### `POST /api/ai/classify`
 - **描述**：智能分类推荐
-- **鉴权**：可选
+- **鉴权**：需要
 - **请求体**：
   ```json
   {
@@ -237,7 +238,7 @@ LiteMark 的接口前缀统一为 `/api`，除特别说明外均返回 JSON。�
 
 ### `POST /api/ai/summarize`
 - **描述**：生成网页摘要和标签
-- **鉴权**：可选
+- **鉴权**：需要
 - **请求体**：
   ```json
   {"url": "https://example.com"}
@@ -253,6 +254,7 @@ LiteMark 的接口前缀统一为 `/api`，除特别说明外均返回 JSON。�
 
 ### `POST /api/ai/fetch-page-info`
 - **描述**：获取网页基本信息（无需 AI）
+- **鉴权**：需要
 - **请求体**：`{"url": "https://example.com"}`
 - **响应**：
   ```json
